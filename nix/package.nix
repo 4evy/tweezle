@@ -34,7 +34,7 @@ buildGo127Module (finalAttrs: {
     ];
   };
 
-  vendorHash = "sha256-s5B4t22lAgwjCKwB0lZC/j/zE64dJB1X8LpjmWHlhsI=";
+  vendorHash = "sha256-ycxjry1I1TuHfzlBWTa5QnKaPZAllh4Kgq0/bck3q8Q=";
 
   subPackages = [ "cmd/tweezle" ];
 
