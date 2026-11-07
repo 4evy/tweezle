@@ -1,7 +1,7 @@
 {
   "name": "tweezle-development-tools",
   "private": true,
-  "packageManager": "bun@1.4.3",
+  "packageManager": "bun@1.4.4",
   "scripts": {
     "format": "bun --bun biome format --write .",
     "format:check": "bun --bun biome format .",
@@ -14,7 +14,7 @@
   "devDependencies": {
     "@babel/parser": "8.0.7",
     "@biomejs/biome": "2.5.15",
-    "@types/bun": "1.4.3",
+    "@types/bun": "1.4.4",
     "lz-string": "1.5.0",
     "typescript": "7.0.2"
   }
