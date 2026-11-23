@@ -18,7 +18,7 @@ require (
 	github.com/mediabuyerbot/go-crx3 v1.7.1
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/pelletier/go-toml/v2 v2.4.3
-	github.com/pierrec/lz4/v4 v4.1.33
+	github.com/pierrec/lz4/v4 v4.1.34
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/spf13/cobra v1.10.2
 	github.com/syndtr/goleveldb v1.0.0
