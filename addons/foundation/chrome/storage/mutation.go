@@ -36,25 +36,22 @@ func mutateNestedStorageValue(
 	value any,
 ) (any, bool, error) {
 	container := gabs.Wrap(document)
-	exists := container.ExistsP(path)
-	var current any
-	if exists {
-		current = container.Path(path).Data()
-	}
-	mutation, err := operation.mutate(current, value)
+	hierarchy := gabs.DotPathToSlice(path)
+	current := container.Search(hierarchy...)
+	mutation, err := operation.mutate(current.Data(), value)
 	if err != nil {
 		return document, false, err
 	}
 	if mutation.remove {
-		if !exists {
+		if current == nil {
 			return document, false, nil
 		}
-		if err := container.DeleteP(path); err != nil {
+		if err := container.Delete(hierarchy...); err != nil {
 			return document, false, err
 		}
 		return container.Data(), true, nil
 	}
-	if _, err := container.SetP(mutation.value, path); err != nil {
+	if _, err := container.Set(mutation.value, hierarchy...); err != nil {
 		return document, false, err
 	}
 	return container.Data(), mutation.changed, nil

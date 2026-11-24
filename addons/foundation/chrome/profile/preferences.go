@@ -121,12 +121,14 @@ func PatchValues(root map[string]any, values []Value, description string) error 
 	return nil
 }
 
+// NestedObject returns or creates an object at a gabs-escaped dotted path
 func NestedObject(root map[string]any, dottedPath string) (map[string]any, error) {
 	document := gabs.Wrap(root)
-	if current, ok := document.Path(dottedPath).Data().(map[string]any); ok {
+	hierarchy := gabs.DotPathToSlice(dottedPath)
+	if current, ok := document.Search(hierarchy...).Data().(map[string]any); ok {
 		return current, nil
 	}
-	created, err := document.ObjectP(dottedPath)
+	created, err := document.Object(hierarchy...)
 	if err != nil {
 		return nil, err
 	}
