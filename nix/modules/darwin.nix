@@ -19,25 +19,23 @@ in
       lib.modules.mkIf (config.system.primaryUser != null)
         (
           lib.modules.mkAfter (
-            lib.strings.concatStringsSep "\n" (
-              lib.attrsets.mapAttrsToList (
-                name: _:
-                "/usr/bin/sudo -H --user=${lib.strings.escapeShellArg config.system.primaryUser} -- "
-                + lib.strings.escapeShellArgs [
-                  "/usr/bin/env"
-                  "-i"
-                  "HOME=${config.system.primaryUserHome}"
-                  "USER=${config.system.primaryUser}"
-                  "LOGNAME=${config.system.primaryUser}"
-                  "PATH=${config.system.path}/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-                  (lib.meta.getExe cfg.package)
-                  "apply"
-                  "/etc/tweezle/${name}.toml"
-                  "--platform"
-                  "macos"
-                ]
-              ) cfg.configFiles
-            )
+            lib.strings.concatMapAttrsStringSep "\n" (
+              name: _:
+              "/usr/bin/sudo -H --user=${lib.strings.escapeShellArg config.system.primaryUser} -- "
+              + lib.strings.escapeShellArgs [
+                "/usr/bin/env"
+                "-i"
+                "HOME=${config.system.primaryUserHome}"
+                "USER=${config.system.primaryUser}"
+                "LOGNAME=${config.system.primaryUser}"
+                "PATH=${config.system.path}/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+                (lib.meta.getExe cfg.package)
+                "apply"
+                "/etc/tweezle/${name}.toml"
+                "--platform"
+                "macos"
+              ]
+            ) cfg.configFiles
           )
         );
   };

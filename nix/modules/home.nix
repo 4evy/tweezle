@@ -30,19 +30,17 @@ in
           export XDG_STATE_HOME=${lib.strings.escapeShellArg config.xdg.stateHome}
           export PATH="${config.home.path}/bin:/run/current-system/sw/bin:/usr/bin:/bin:$PATH"
           cd "$HOME"
-          ${lib.strings.concatStringsSep "\n" (
-            lib.attrsets.mapAttrsToList (
-              name: _:
-              "run "
-              + lib.strings.escapeShellArgs [
-                (lib.meta.getExe cfg.package)
-                "apply"
-                "${config.xdg.configHome}/tweezle/${name}.toml"
-                "--platform"
-                (if pkgs.stdenv.hostPlatform.isDarwin then "macos" else "linux")
-              ]
-            ) cfg.configFiles
-          )}
+          ${lib.strings.concatMapAttrsStringSep "\n" (
+            name: _:
+            "run "
+            + lib.strings.escapeShellArgs [
+              (lib.meta.getExe cfg.package)
+              "apply"
+              "${config.xdg.configHome}/tweezle/${name}.toml"
+              "--platform"
+              (if pkgs.stdenv.hostPlatform.isDarwin then "macos" else "linux")
+            ]
+          ) cfg.configFiles}
         )
       ''
     );

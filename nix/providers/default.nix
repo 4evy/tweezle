@@ -52,7 +52,7 @@ in
     settings:
     lib.lists.all (provider: (provider.configurationCanBeChecked or (_: true)) settings) providers;
   hasPolicyIntent = settings: lib.lists.any (provider: provider.hasPolicyIntent settings) providers;
-  nixosModules = lib.lists.concatMap (provider: provider.nixosModules or [ ]) providers;
-  homeManagerModules = lib.lists.concatMap (provider: provider.homeManagerModules or [ ]) providers;
-  systemModules = lib.lists.concatMap (provider: provider.systemModules or [ ]) providers;
+  nixosModules = lib.lists.concatLists (lib.attrsets.catAttrs "nixosModules" providers);
+  homeManagerModules = lib.lists.concatLists (lib.attrsets.catAttrs "homeManagerModules" providers);
+  systemModules = lib.lists.concatLists (lib.attrsets.catAttrs "systemModules" providers);
 }

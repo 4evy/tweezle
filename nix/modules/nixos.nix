@@ -20,19 +20,17 @@ in
       (
         export PATH="${config.system.path}/bin:$HOME/.nix-profile/bin:/etc/profiles/per-user/$USER/bin:$PATH"
         cd "$HOME"
-        ${lib.strings.concatStringsSep "\n" (
-          lib.attrsets.mapAttrsToList (
-            name: _:
-            lib.strings.escapeShellArgs [
-              (lib.meta.getExe cfg.package)
-              "apply"
-              "/etc/tweezle/${name}.toml"
-              "--platform"
-              "linux"
-            ]
-            + " || exit $?"
-          ) cfg.configFiles
-        )}
+        ${lib.strings.concatMapAttrsStringSep "\n" (
+          name: _:
+          lib.strings.escapeShellArgs [
+            (lib.meta.getExe cfg.package)
+            "apply"
+            "/etc/tweezle/${name}.toml"
+            "--platform"
+            "linux"
+          ]
+          + " || exit $?"
+        ) cfg.configFiles}
       )
     '';
   };

@@ -72,11 +72,9 @@ let
     ''
   ) policyGroups;
 
-  managedPolicyFile =
-    if builtins.length (lib.attrsets.attrValues managedPolicyFiles) == 1 then
-      builtins.head (lib.attrsets.attrValues managedPolicyFiles)
-    else
-      null;
+  managedPolicyFile = lib.lists.findSingle (_: true) null null (
+    lib.attrsets.attrValues managedPolicyFiles
+  );
 
   validConfigurationName =
     name: name != "tweezle" && builtins.match "[A-Za-z0-9][A-Za-z0-9._-]*" name != null;
