@@ -3,6 +3,7 @@ package desktop
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -33,6 +34,43 @@ var execEscapes = strings.NewReplacer(
 	"\t", `\t`,
 )
 
+var desktopValueUnescape = strings.NewReplacer(`\\`, `\`, `\s`, " ", `\t`, "\t", `\r`, "\r", `\n`, "\n")
+var desktopExecUnescape = strings.NewReplacer(`\\`, `\`, `\"`, `"`, "\\`", "`", `\$`, "$")
+
+// execWord finds one token without reserializing any following field codes or
+// whitespace. Flatpak's GLib-generated prefix also uses single quotes
+func execWord(text string, flatpak bool) (word, rest string, err error) {
+	text = strings.TrimLeft(text, " \t")
+	var quote byte
+	var escaped bool
+	for index := 0; index < len(text); {
+		c, width := text[index], 1
+		if c == '\\' && index+1 < len(text) && text[index+1] == '\\' {
+			// Desktop-entry value decoding precedes Exec quoting
+			width = 2
+		}
+		switch {
+		case escaped:
+			escaped = false
+		case c == '\\' && quote != '\'' && (flatpak || width == 2):
+			escaped = true
+		case quote != 0:
+			if quote == c {
+				quote = 0
+			}
+		case c == '"' || (flatpak && c == '\''):
+			quote = c
+		case c == ' ' || c == '\t':
+			return text[:index], text[index:], nil
+		}
+		index += width
+	}
+	if quote != 0 {
+		return "", "", fmt.Errorf("unterminated quote in Exec value %q", text)
+	}
+	return text, "", nil
+}
+
 // Rewrite replaces matching executables and applies browser desktop metadata.
 func Rewrite(text, executable, sourceExec, startupWMClass string) (string, error) {
 	return RewriteWithIcon(text, executable, sourceExec, startupWMClass, "")
@@ -56,16 +94,20 @@ func RewriteWithIcon(
 		if err != nil {
 			continue
 		}
-		command, arguments, _ := strings.Cut(key.String(), " ")
-		if command == sourceExec {
+		token, rest, err := execWord(key.String(), false)
+		if err != nil {
+			return "", fmt.Errorf("desktop entry %s: %w", section.Name(), err)
+		}
+		command := desktopValueUnescape.Replace(token)
+		if inner, ok := strings.CutPrefix(command, `"`); ok && strings.HasSuffix(inner, `"`) {
+			command = desktopExecUnescape.Replace(strings.TrimSuffix(inner, `"`))
+		}
+		if strings.ReplaceAll(command, "%%", "%") == sourceExec {
 			replacement, err := EscapeExecutable(executable)
 			if err != nil {
 				return "", err
 			}
-			if arguments != "" {
-				replacement += " " + arguments
-			}
-			key.SetValue(replacement)
+			key.SetValue(replacement + rest)
 		}
 	}
 	desktop := config.Section(sectionDesktop)
@@ -99,7 +141,7 @@ func Alias(text string) (string, error) {
 
 // RewriteFlatpak replaces the exported flatpak run prefix, retaining browser
 // arguments and file-forwarding markers consumed by the new Flatpak launcher
-func RewriteFlatpak(text, executable, appID string) (string, error) {
+func RewriteFlatpak(text, executable, appID, defaultCommand string) (string, error) {
 	config, err := load(text)
 	if err != nil {
 		return "", err
@@ -113,13 +155,47 @@ func RewriteFlatpak(text, executable, appID string) (string, error) {
 		if err != nil {
 			continue
 		}
-		prefix, arguments, found := strings.Cut(key.String(), " "+appID)
-		if !found || (arguments != "" && !strings.HasPrefix(arguments, " ")) {
-			return "", fmt.Errorf("desktop entry %s does not launch Flatpak %s", section.Name(), appID)
+		arguments := key.String()
+		index := 0
+		found := false
+		for strings.TrimSpace(arguments) != "" {
+			token, rest, err := execWord(arguments, true)
+			if err != nil {
+				return "", fmt.Errorf("desktop entry %s: %w", section.Name(), err)
+			}
+			words, err := shellwords.SplitPosix(desktopValueUnescape.Replace(token))
+			if err != nil || len(words) != 1 {
+				return "", fmt.Errorf("desktop entry %s has an unsupported Flatpak command", section.Name())
+			}
+			word := words[0]
+			arguments = rest
+			switch index {
+			case 0:
+				if filepath.Base(word) != "flatpak" {
+					return "", fmt.Errorf("desktop entry %s does not launch Flatpak", section.Name())
+				}
+			case 1:
+				if word != "run" {
+					return "", fmt.Errorf("desktop entry %s does not use flatpak run", section.Name())
+				}
+			default:
+				if word == appID {
+					found = true
+				} else if command, ok := strings.CutPrefix(word, "--command="); ok {
+					if command == "" || command != defaultCommand {
+						return "", fmt.Errorf("desktop entry %s uses a nondefault Flatpak command %q", section.Name(), command)
+					}
+				} else if !strings.HasPrefix(word, "--") || word == "--command" {
+					return "", fmt.Errorf("desktop entry %s has an unsupported Flatpak argument %q", section.Name(), word)
+				}
+			}
+			if found {
+				break
+			}
+			index++
 		}
-		words, err := shellwords.SplitPosix(prefix)
-		if err != nil || len(words) < 2 || !strings.HasSuffix(words[0], "flatpak") || words[1] != "run" {
-			return "", fmt.Errorf("desktop entry %s has an unsupported Flatpak command", section.Name())
+		if !found {
+			return "", fmt.Errorf("desktop entry %s does not launch Flatpak %s", section.Name(), appID)
 		}
 		key.SetValue(replacement + arguments)
 	}

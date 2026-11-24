@@ -190,7 +190,7 @@ func (app Application) InstallDesktop(executable, name string) error {
 	if err != nil {
 		return fmt.Errorf("read Flatpak desktop entry: %w", err)
 	}
-	text, err := desktop.RewriteFlatpak(string(data), executable, id)
+	text, err := desktop.RewriteFlatpak(string(data), executable, id, app.Metadata.Section("Application").Key("command").String())
 	if err != nil {
 		return err
 	}
