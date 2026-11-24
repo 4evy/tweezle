@@ -2,6 +2,7 @@
 package flatpak
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -80,9 +81,12 @@ func (config Config) Resolve(ctx context.Context) (Application, error) {
 		if config.Branch != "" {
 			args = append(args, config.Branch)
 		}
-		output, err := exec.CommandContext(ctx, executable, args...).CombinedOutput()
+		command := exec.CommandContext(ctx, executable, args...)
+		var stderr bytes.Buffer
+		command.Stderr = &stderr
+		output, err := command.Output()
 		if err != nil {
-			return "", fmt.Errorf("inspect Flatpak %s: %w: %s", config.AppID, err, strings.TrimSpace(string(output)))
+			return "", fmt.Errorf("inspect Flatpak %s: %w: %s", config.AppID, err, strings.TrimSpace(stderr.String()))
 		}
 		return strings.TrimSpace(string(output)), nil
 	}
