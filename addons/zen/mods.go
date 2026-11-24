@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -13,22 +14,18 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/4evy/tweezle/addons/firefox"
 	jsonutil "github.com/4evy/tweezle/internal/json"
-	"github.com/carlmjohnson/requests"
-	"github.com/iancoleman/orderedmap"
 )
 
-func download(ctx context.Context, address string) ([]byte, error) {
-	parsed, err := url.Parse(address)
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
-		return nil, fmt.Errorf("zen Mod asset requires HTTPS: %q", address)
-	}
-	client := http.Client{Timeout: 30 * time.Second, CheckRedirect: func(request *http.Request, via []*http.Request) error {
+var modHTTPClient = http.Client{
+	Timeout: 30 * time.Second,
+	CheckRedirect: func(request *http.Request, via []*http.Request) error {
 		if request.URL.Scheme != "https" {
 			return errors.New("zen Mod asset redirected away from HTTPS")
 		}
@@ -36,16 +33,28 @@ func download(ctx context.Context, address string) ([]byte, error) {
 			return errors.New("too many Zen Mod redirects")
 		}
 		return nil
-	}}
+	},
+}
+
+func download(ctx context.Context, address string) ([]byte, error) {
+	parsed, err := url.Parse(address)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return nil, fmt.Errorf("zen Mod asset requires HTTPS: %q", address)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+	if err != nil {
+		return nil, fmt.Errorf("download Zen Mod asset %s: %w", address, err)
+	}
+	response, err := modHTTPClient.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("download Zen Mod asset %s: %w", address, err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("download Zen Mod asset %s: HTTP %s", address, response.Status)
+	}
 	const limit = 8 << 20
-	var data []byte
-	err = requests.URL(address).Client(&client).
-		CheckStatus(http.StatusOK).
-		Handle(func(response *http.Response) error {
-			var err error
-			data, err = io.ReadAll(io.LimitReader(response.Body, limit+1))
-			return err
-		}).Fetch(ctx)
+	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil {
 		return nil, fmt.Errorf("download Zen Mod asset %s: %w", address, err)
 	}
@@ -61,19 +70,23 @@ func (config Config) mods(profile firefox.Profile) ([]firefox.ProfileFile, map[s
 		ctx = context.Background()
 	}
 	path := filepath.Join(profile.Directory, "zen-themes.json")
-	installed, err := loadMods(path)
+	order, manifests, err := loadMods(path)
 	if err != nil {
 		return nil, nil, err
 	}
-	manifests := installed.Values()
+	// ZenCommonUtils maps Gecko's Darwin platform to the store's macos token
+	platform := runtime.GOOS
+	if platform == "darwin" {
+		platform = "macos"
+	}
 	var files []firefox.ProfileFile
 	styles := map[string][]byte{}
 	preferences := map[string]any{}
 	for _, id := range slices.Sorted(maps.Keys(config.Mods)) {
 		configured := config.Mods[id]
 		modPreferences := map[string]any{}
-		manifest, _ := manifests[id].(map[string]any)
-		refresh := manifest == nil || (configured.Revision != "" && manifest["tweezleRevision"] != configured.Revision)
+		manifest, installed := manifests[id]
+		refresh := !installed || (configured.Revision != "" && manifest["tweezleRevision"] != configured.Revision)
 		if refresh {
 			address := "https://zen-browser.github.io/theme-store/themes/" + id + "/theme.json"
 			if configured.Revision != "" {
@@ -84,14 +97,20 @@ func (config Config) mods(profile firefox.Profile) ([]firefox.ProfileFile, map[s
 				return nil, nil, err
 			}
 			var updated map[string]any
-			if err := json.Unmarshal(data, &updated); err != nil {
+			if err := jsonutil.Default.DecodeInto(bytes.NewReader(data), &updated); err != nil {
 				return nil, nil, err
 			}
 			if updated["id"] != id {
 				return nil, nil, fmt.Errorf("zen Mod manifest ID does not match %s", id)
 			}
-			if oldEnabled, ok := manifest["enabled"].(bool); ok {
-				updated["enabled"] = oldEnabled
+			if installed {
+				if oldEnabled, present := manifest["enabled"]; present {
+					updated["enabled"] = oldEnabled
+				} else {
+					delete(updated, "enabled")
+				}
+			} else {
+				order = append(order, id)
 			}
 			manifest = updated
 			if configured.Revision != "" {
@@ -139,9 +158,10 @@ func (config Config) mods(profile firefox.Profile) ([]firefox.ProfileFile, map[s
 			}
 		}
 		var definitions []struct {
-			Property string `json:"property"`
-			Type     string `json:"type"`
-			Default  any    `json:"defaultValue"`
+			Property   string   `json:"property"`
+			Type       string   `json:"type"`
+			Default    any      `json:"defaultValue"`
+			DisabledOn []string `json:"disabledOn"`
 		}
 		if len(preferenceData) > 0 {
 			if err := json.Unmarshal(preferenceData, &definitions); err != nil {
@@ -149,29 +169,40 @@ func (config Config) mods(profile firefox.Profile) ([]firefox.ProfileFile, map[s
 			}
 		}
 		types := map[string]string{}
+		enabled := modEnabled(manifest)
 		for _, definition := range definitions {
+			if slices.Contains(definition.DisabledOn, platform) {
+				continue
+			}
 			types[definition.Property] = definition.Type
-			if refresh && definition.Default != nil {
-				if _, existing := profile.Preferences[definition.Property]; !existing {
-					if definition.Type == "checkbox" {
-						if value, ok := definition.Default.(bool); ok {
-							modPreferences[definition.Property] = value
-						}
-					} else {
-						modPreferences[definition.Property] = fmt.Sprint(definition.Default)
-					}
+			if !enabled {
+				continue
+			}
+			if _, existing := profile.Preferences[definition.Property]; existing {
+				continue
+			}
+			if definition.Type == "checkbox" {
+				if value, ok := definition.Default.(bool); ok {
+					modPreferences[definition.Property] = value
+				}
+			} else {
+				switch value := definition.Default.(type) {
+				case string:
+					modPreferences[definition.Property] = value
+				case float64:
+					modPreferences[definition.Property] = fmt.Sprint(value)
 				}
 			}
 		}
 		for name, value := range configured.Preferences {
 			typ, exists := types[name]
 			if !exists {
-				return nil, nil, fmt.Errorf("Mod %s has no preference %q", id, name)
+				return nil, nil, fmt.Errorf("zen Mod %s has no preference %q", id, name)
 			}
 			_, boolean := value.(bool)
 			_, text := value.(string)
 			if (typ == "checkbox" && !boolean) || (typ != "checkbox" && !text) {
-				return nil, nil, fmt.Errorf("Mod preference %s has the wrong type", name)
+				return nil, nil, fmt.Errorf("zen Mod preference %s has the wrong type", name)
 			}
 			modPreferences[name] = value
 		}
@@ -181,9 +212,9 @@ func (config Config) mods(profile firefox.Profile) ([]firefox.ProfileFile, map[s
 			}
 			preferences[name] = value
 		}
-		installed.Set(id, manifest)
+		manifests[id] = manifest
 	}
-	data, err := json.Marshal(installed, json.Deterministic(true))
+	data, err := encodeMods(order, manifests)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -193,12 +224,8 @@ func (config Config) mods(profile firefox.Profile) ([]firefox.ProfileFile, map[s
 	// Mods, so installing or toggling one does not remove the others' CSS
 	var combined strings.Builder
 	combined.WriteString("/* Generated Zen Mods stylesheet */\n")
-	for _, id := range installed.Keys() {
-		manifest, ok := manifests[id].(map[string]any)
-		if !ok {
-			return nil, nil, fmt.Errorf("invalid installed Zen Mod %s", id)
-		}
-		if enabled, ok := manifest["enabled"].(bool); ok && !enabled {
+	for _, id := range order {
+		if !modEnabled(manifests[id]) {
 			continue
 		}
 		style, prepared := styles[id]
@@ -215,34 +242,76 @@ func (config Config) mods(profile firefox.Profile) ([]firefox.ProfileFile, map[s
 	return files, preferences, nil
 }
 
-// Keep strict JSON validation and exact numbers while the ordered map owns
-// insertion order and serialization of the native Mod store
-func loadMods(path string) (*orderedmap.OrderedMap, error) {
-	installed := orderedmap.New()
-	installed.SetEscapeHTML(false)
-	data, err := os.ReadFile(path)
+func modEnabled(manifest map[string]any) bool {
+	enabled, configured := manifest["enabled"].(bool)
+	return !configured || enabled
+}
+
+// Use the token stream for the outer object to retain native stylesheet
+// order, and decode each manifest once with the exact-number policy
+func loadMods(path string) ([]string, map[string]map[string]any, error) {
+	manifests := map[string]map[string]any{}
+	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return installed, nil
+		return nil, manifests, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	manifests, err := jsonutil.Default.Decode[map[string]any](bytes.NewReader(data))
+	defer func() { _ = file.Close() }()
+	decoder := jsontext.NewDecoder(file)
+	token, err := decoder.ReadToken()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if manifests == nil {
-		return nil, fmt.Errorf("%s must contain an object", path)
+	if token.Kind() != jsontext.KindBeginObject {
+		return nil, nil, fmt.Errorf("%s must contain an object", path)
 	}
-	if err := json.Unmarshal(data, installed); err != nil {
-		return nil, err
-	}
-	for _, id := range installed.Keys() {
-		manifest, ok := manifests[id].(map[string]any)
-		if !uuid.MatchString(id) || !ok {
-			return nil, fmt.Errorf("invalid installed Zen Mod %s", id)
+	var order []string
+	for decoder.PeekKind() != jsontext.KindEndObject {
+		token, err := decoder.ReadToken()
+		if err != nil {
+			return nil, nil, err
 		}
-		installed.Set(id, manifest)
+		id := token.String()
+		if !uuid.MatchString(id) || decoder.PeekKind() != jsontext.KindBeginObject {
+			return nil, nil, fmt.Errorf("invalid installed Zen Mod %q", id)
+		}
+		var manifest map[string]any
+		if err := jsonutil.Default.DecodeFrom(decoder, &manifest); err != nil {
+			return nil, nil, err
+		}
+		manifests[id] = manifest
+		order = append(order, id)
 	}
-	return installed, nil
+	if _, err := decoder.ReadToken(); err != nil {
+		return nil, nil, err
+	}
+	if _, err := decoder.ReadToken(); err != io.EOF {
+		if err == nil {
+			err = fmt.Errorf("%s must contain exactly one JSON object", path)
+		}
+		return nil, nil, err
+	}
+	return order, manifests, nil
+}
+
+func encodeMods(order []string, manifests map[string]map[string]any) ([]byte, error) {
+	var data bytes.Buffer
+	encoder := jsontext.NewEncoder(&data)
+	if err := encoder.WriteToken(jsontext.BeginObject); err != nil {
+		return nil, err
+	}
+	for _, id := range order {
+		if err := encoder.WriteToken(jsontext.String(id)); err != nil {
+			return nil, err
+		}
+		if err := json.MarshalEncode(encoder, manifests[id], json.Deterministic(true)); err != nil {
+			return nil, err
+		}
+	}
+	if err := encoder.WriteToken(jsontext.EndObject); err != nil {
+		return nil, err
+	}
+	return data.Bytes(), nil
 }

@@ -48,3 +48,8 @@ func (decoder Decoder) Decode[T any](reader io.Reader) (T, error) {
 func (decoder Decoder) DecodeInto(reader io.Reader, value any) error {
 	return json.UnmarshalRead(reader, value, decoder.options)
 }
+
+// DecodeFrom reads the next value from an existing JSON token stream.
+func (decoder Decoder) DecodeFrom(stream *jsontext.Decoder, value any) error {
+	return json.UnmarshalDecode(stream, value, decoder.options)
+}

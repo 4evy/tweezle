@@ -8,7 +8,6 @@ require (
 	github.com/Jeffail/gabs/v2 v2.7.0
 	github.com/adrg/xdg v0.5.3
 	github.com/buildkite/shellwords v1.0.1
-	github.com/carlmjohnson/requests v0.26.3
 	github.com/chromedp/cdproto v0.160.9
 	github.com/chromedp/chromedp v0.24.0
 	github.com/daku10/go-lz-string v0.0.7
@@ -17,7 +16,6 @@ require (
 	github.com/google/renameio/v2 v2.0.2
 	github.com/gophertools/requests/v2 v2.26.0
 	github.com/hashicorp/go-retryablehttp v0.7.8
-	github.com/iancoleman/orderedmap v0.3.0
 	github.com/mediabuyerbot/go-crx3 v1.7.1
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/pelletier/go-toml/v2 v2.4.3

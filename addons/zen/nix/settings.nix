@@ -20,8 +20,8 @@ in
   '';
   mods = schema.optional (types.attrsOf (
     schema.freeformSubmodule {
-      enabled = optionalBool "Enable this Mod; defaults to the installed value or enabled for a new Mod.";
-      revision = optionalString "Full theme-store commit SHA to pin the manifest and store-hosted assets.";
+      enabled = optionalBool "Enable this Mod; defaults to the installed value or the Zen store default.";
+      revision = optionalString "Full theme-store commit SHA for Tweezle-managed downloads; does not restrict Zen's marketplace updater.";
       style_sha256 = optionalString "Optional hexadecimal SHA-256 of the stylesheet.";
       preferences = schema.optional (types.attrsOf (
         types.oneOf [

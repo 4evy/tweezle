@@ -25,6 +25,8 @@ var embeddedSchemas []byte
 var (
 	shortcutSchema, workspaceSchema = loadSchemas()
 	uuid                            = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	modRevision                     = regexp.MustCompile(`^[a-fA-F0-9]{40}$`)
+	modStyleSHA256                  = regexp.MustCompile(`^[a-fA-F0-9]{64}$`)
 )
 
 func validWorkspaceID(id string) bool {
@@ -88,20 +90,20 @@ func (config Config) Validate() error {
 		if !uuid.MatchString(id) {
 			errs = append(errs, fmt.Errorf("invalid Mod UUID %q", id))
 		}
-		if mod.Revision != "" && !regexp.MustCompile(`^[a-fA-F0-9]{40}$`).MatchString(mod.Revision) {
-			errs = append(errs, fmt.Errorf("Mod %s revision must be a full theme-store commit SHA", id))
+		if mod.Revision != "" && !modRevision.MatchString(mod.Revision) {
+			errs = append(errs, fmt.Errorf("zen Mod %s revision must be a full theme-store commit SHA", id))
 		}
-		if mod.StyleSHA256 != "" && !regexp.MustCompile(`^[a-fA-F0-9]{64}$`).MatchString(mod.StyleSHA256) {
-			errs = append(errs, fmt.Errorf("Mod %s style_sha256 must have 64 hex digits", id))
+		if mod.StyleSHA256 != "" && !modStyleSHA256.MatchString(mod.StyleSHA256) {
+			errs = append(errs, fmt.Errorf("zen Mod %s style_sha256 must have 64 hex digits", id))
 		}
 		for name, value := range mod.Preferences {
 			if name == "" {
-				errs = append(errs, errors.New("Mod preference name must not be empty"))
+				errs = append(errs, errors.New("zen Mod preference name must not be empty"))
 			}
 			switch value.(type) {
 			case bool, string:
 			default:
-				errs = append(errs, fmt.Errorf("Mod preference %s must be boolean or string", name))
+				errs = append(errs, fmt.Errorf("zen Mod preference %s must be boolean or string", name))
 			}
 		}
 	}
@@ -135,7 +137,7 @@ func (config Config) Prepare(profile firefox.Profile) (firefox.Contribution, err
 		contribution.Files = append(contribution.Files, files...)
 		for name, value := range prefs {
 			if _, present := preferences[name]; present {
-				return contribution, fmt.Errorf("Mod preference %s conflicts with Zen preferences", name)
+				return contribution, fmt.Errorf("mod preference %s conflicts with Zen preferences", name)
 			}
 			preferences[name] = value
 		}
