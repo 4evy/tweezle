@@ -82,6 +82,6 @@ vertical_tabs_allowed = true # Allows the layout; does not activate it
 [browser.preferences.cookies]
 third_party = "block"
 
-# Edge currently retains Manifest V2 during its deprecation period
-# Both uBlock Origin and Lite recipes are available; check future Edge releases
+# Current consumer Edge no longer supports Manifest V2. Use [ublock.lite]
+# For a build known to retain MV2, set supports_manifest_v2 under [browser]
 # The ublock/ublock.toml example contains the shared installation recipes

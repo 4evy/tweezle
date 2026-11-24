@@ -147,11 +147,11 @@ func (config Config) PatchLocalState(map[string]any) error {
 
 // Contributions supplies Vivaldi's additions to the shared Chromium engine
 func (config Config) Contributions() chromium.Contribution {
-	contribution := chromium.PreferenceContributions(config)
-	// Vivaldi 8.2 restored Manifest V2 support for the time being
-	// Source: https://vivaldi.com/blog/desktop/address-field-calculator-and-vpn-fix-vivaldi-browser-snapshot-4133-3/
-	contribution.SupportsManifestV2 = new(true)
-	return contribution
+	// Vivaldi announced that snapshot 8.2.4133.3 re-enabled Manifest V2
+	// Published sources do not establish the shipped activation path or store
+	// availability, so leave support undeclared unless the user knows the build
+	// https://vivaldi.com/blog/desktop/address-field-calculator-and-vpn-fix-vivaldi-browser-snapshot-4133-3/
+	return chromium.PreferenceContributions(config)
 }
 
 var _ chromium.Provider = Config{}

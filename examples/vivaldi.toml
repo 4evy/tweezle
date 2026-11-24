@@ -90,6 +90,7 @@ block_pings = true
 # [browser.vivaldi]
 # completed_onboarding = true
 
-# Vivaldi 8.2 restored Manifest V2 support, including uBlock Origin
-# For older builds or custom builds, set browser.supports_manifest_v2 explicitly
+# Vivaldi announced that its 8.2 snapshot re-enabled Manifest V2
+# That announcement does not establish support for every build or in the store
+# Set supports_manifest_v2 under [browser] if you know your build's capability
 # uBlock settings and installation recipes are in ublock/ublock.toml

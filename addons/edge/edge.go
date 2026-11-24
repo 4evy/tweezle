@@ -55,13 +55,14 @@ func (config Config) Validate() error {
 	return nil
 }
 
-// Contributions retains Manifest V2 while Edge warns about its deprecation
-// Source: https://learn.microsoft.com/en-us/microsoft-edge/extensions/developer-guide/manifest-v3
+// Contributions assumes current consumer Edge, where Manifest V2 is retired
+// The browser capability override can describe a verified managed or older build
+// Source: https://github.com/MicrosoftDocs/edge-developer/blob/f8757d5112c86c2e45a42b2180f2617f27963294/microsoft-edge/extensions/developer-guide/manifest-v3.md#L14-L22
 func (config Config) Contributions() chromium.Contribution {
 	values, _ := metadata.Resolve(config, config.ManagedPolicies)
 	return chromium.Contribution{
 		ManagedPolicies:    values,
-		SupportsManifestV2: new(true),
+		SupportsManifestV2: new(false),
 	}
 }
 
