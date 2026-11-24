@@ -4,17 +4,20 @@
 package tweezle
 
 import (
+	"bytes"
 	"context"
+	jsonv1 "encoding/json"
+	json "encoding/json/v2"
 	"errors"
 	"fmt"
-	"maps"
+	"math/big"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"slices"
 	"strings"
 
+	jsonutil "github.com/4evy/tweezle/internal/json"
 	"github.com/4evy/tweezle/internal/reflectutil"
 	"github.com/4evy/tweezle/launcher"
 	"github.com/pelletier/go-toml/v2"
@@ -193,13 +196,116 @@ func MergePolicies(documents ...map[string]any) (map[string]any, error) {
 	merged := map[string]any{}
 	for index, document := range documents {
 		for name, value := range document {
-			if existing, ok := merged[name]; ok && !reflect.DeepEqual(existing, value) {
-				return nil, fmt.Errorf("managed policy %q conflicts in configuration %d: %#v and %#v", name, index+1, existing, value)
+			if existing, ok := merged[name]; ok {
+				equal, err := equalPolicy(existing, value)
+				if err != nil {
+					return nil, fmt.Errorf("compare managed policy %q in configuration %d: %w", name, index+1, err)
+				}
+				if !equal {
+					return nil, fmt.Errorf("managed policy %q conflicts in configuration %d: %#v and %#v", name, index+1, existing, value)
+				}
 			}
+			merged[name] = value
 		}
-		maps.Copy(merged, document)
 	}
 	return merged, nil
+}
+
+func equalPolicy(left, right any) (bool, error) {
+	a, err := json.Marshal(left, json.Deterministic(true))
+	if err != nil {
+		return false, err
+	}
+	b, err := json.Marshal(right, json.Deterministic(true))
+	if err != nil {
+		return false, err
+	}
+	if bytes.Equal(a, b) {
+		return true, nil
+	}
+	l, err := jsonutil.Default.Decode[any](bytes.NewReader(a))
+	if err != nil {
+		return false, err
+	}
+	r, err := jsonutil.Default.Decode[any](bytes.NewReader(b))
+	if err != nil {
+		return false, err
+	}
+	return equalPolicyJSON(l, r), nil
+}
+
+func equalPolicyJSON(left, right any) bool {
+	switch left := left.(type) {
+	case map[string]any:
+		right, ok := right.(map[string]any)
+		if !ok || len(left) != len(right) {
+			return false
+		}
+		for key, x := range left {
+			if y, exists := right[key]; !exists || !equalPolicyJSON(x, y) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		right, ok := right.([]any)
+		if !ok || len(left) != len(right) {
+			return false
+		}
+		for i, x := range left {
+			if !equalPolicyJSON(x, right[i]) {
+				return false
+			}
+		}
+		return true
+	case jsonv1.Number:
+		right, ok := right.(jsonv1.Number)
+		return ok && (left == right || equalPolicyNumber(left.String(), right.String()))
+	default:
+		// JSON scalars other than numbers are directly comparable
+		return left == right
+	}
+}
+
+func equalPolicyNumber(a, b string) bool {
+	left, leftExp, leftShift, leftNeg := policyNumberParts(a)
+	right, rightExp, rightShift, rightNeg := policyNumberParts(b)
+	if left != right {
+		return false
+	}
+	if left == "" {
+		return true
+	}
+	if leftNeg != rightNeg {
+		return false
+	}
+	if leftExp == rightExp {
+		return leftShift == rightShift
+	}
+	// Compare exponents without expanding powers of ten or rounding
+	var l, r, shift big.Int
+	l.SetString(leftExp, 10)
+	r.SetString(rightExp, 10)
+	l.Add(&l, shift.SetInt64(int64(leftShift)))
+	r.Add(&r, shift.SetInt64(int64(rightShift)))
+	return l.Cmp(&r) == 0
+}
+
+// policyNumberParts separates a valid JSON number into its significant digits
+// and decimal exponent, expressed as the written exponent plus a shift
+func policyNumberParts(value string) (digits, exponent string, shift int, negative bool) {
+	value, negative = strings.CutPrefix(value, "-")
+	exponent = "0"
+	if i := strings.IndexAny(value, "eE"); i >= 0 {
+		value, exponent = value[:i], value[i+1:]
+	}
+	whole, fraction, _ := strings.Cut(value, ".")
+	fraction = strings.TrimRight(fraction, "0")
+	if fraction != "" {
+		return strings.TrimLeft(whole+fraction, "0"), exponent, -len(fraction), negative
+	}
+	digits = strings.TrimRight(whole, "0")
+	return digits, exponent, len(whole) - len(digits), negative
 }
 
 // RunLauncher detects and executes an installed browser launcher
