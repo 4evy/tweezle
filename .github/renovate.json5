@@ -1,7 +1,12 @@
 {
   // Renovate discovers repository configuration from .github automatically.
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
-  extends: ["config:best-practices"],
+  // Dependency upgrades are bumps, not claims that a bug was fixed
+  extends: [
+    "config:best-practices",
+    ":semanticCommits",
+    ":semanticCommitTypeAll(bump)",
+  ],
 
   // GITHUB_TOKEN pushes do not start a second workflow. Use Renovate's
   // artifact status to require successful updates before branch automerge.
