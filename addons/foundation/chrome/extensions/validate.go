@@ -1,6 +1,7 @@
 package extensions
 
 import (
+	"cmp"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -84,10 +85,10 @@ func (validator *catalogValidator) Add[T identifiedCatalogExtension](
 func ValidateCatalog(catalog Catalog) error {
 	validator := catalogValidator{}
 	validator.errs = append(validator.errs, validateNetworkConfig(catalog.Network))
-	if len(catalog.ChromeStore) > 0 && !ValidURL(catalog.ChromeStoreUpdateURL) {
+	if len(catalog.ChromeStore) > 0 && !validHTTPURL(catalog.ChromeStoreUpdateURL) {
 		validator.errs = append(
 			validator.errs,
-			errors.New("extensions.chrome_store_update_url is required when Chrome Store entries exist"),
+			errors.New("extensions.chrome_store_update_url must be an HTTP(S) URL when Chrome Store entries exist"),
 		)
 	}
 	validator.Add("chrome store", catalog.ChromeStore, nil)
@@ -140,7 +141,7 @@ func validateDownloadedExtension(extension DownloadedExtension) error {
 		extensionFieldValidation{
 			name: "version", valid: ValidExternalVersion(extension.Version),
 		},
-		extensionFieldValidation{name: "URL", valid: ValidURL(extension.URL)},
+		extensionFieldValidation{name: "URL", valid: validHTTPURL(extension.URL)},
 		extensionFieldValidation{name: "SHA-256", valid: ValidSHA256(extension.SHA256)},
 	)
 }
@@ -252,7 +253,7 @@ func validatePinnedReleaseExtension(extension ZIPExtension) error {
 		extensionFieldValidation{
 			name: "version", valid: ValidExternalVersion(extension.Version),
 		},
-		extensionFieldValidation{name: "URL", valid: ValidURL(extension.URL)},
+		extensionFieldValidation{name: "URL", valid: validHTTPURL(extension.URL)},
 		extensionFieldValidation{name: "SHA-256", valid: ValidSHA256(extension.SHA256)},
 	))
 	return errors.Join(errs...)
@@ -457,6 +458,15 @@ func ValidURL(rawURL string) bool {
 	return err == nil && parsed.Scheme != "" && parsed.Host != ""
 }
 
+func validHTTPURL(rawURL string) bool {
+	parsed, err := url.Parse(rawURL)
+	return err == nil && isHTTPURL(parsed)
+}
+
+func isHTTPURL(parsed *url.URL) bool {
+	return (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Hostname() != ""
+}
+
 // ValidExternalVersion mirrors the version accepted by Chromium when it loads
 // an extension manifest: one to four uint32 decimal components. base::Version
 // requires only the first component to use canonical spelling; later
@@ -465,14 +475,36 @@ func ValidURL(rawURL string) bool {
 // Parser: https://chromium.googlesource.com/chromium/src/+/879b13b2715914eb6263fbbfa1eae7e1d49f9c1c/base/version.cc#21
 // Extension limit: https://chromium.googlesource.com/chromium/src/+/879b13b2715914eb6263fbbfa1eae7e1d49f9c1c/extensions/common/extension.cc#696
 func ValidExternalVersion(version string) bool {
+	_, valid := externalVersionParts(version)
+	return valid
+}
+
+// CompareExternalVersions compares numeric Chromium version components, treating
+// missing trailing components as zero, as base::Version::CompareTo does
+func CompareExternalVersions(a, b string) (int, error) {
+	left, valid := externalVersionParts(a)
+	if !valid {
+		return 0, fmt.Errorf("invalid Chromium version %q", a)
+	}
+	right, valid := externalVersionParts(b)
+	if !valid {
+		return 0, fmt.Errorf("invalid Chromium version %q", b)
+	}
+	for i, value := range left {
+		if order := cmp.Compare(value, right[i]); order != 0 {
+			return order, nil
+		}
+	}
+	return 0, nil
+}
+
+func externalVersionParts(version string) ([maxExternalVersionParts]uint32, bool) {
+	var parts [maxExternalVersionParts]uint32
 	partCount := 0
 	for part := range strings.SplitSeq(version, ".") {
-		partCount++
-		if partCount > maxExternalVersionParts {
-			return false
-		}
-		if part == "" || part[0] == '+' {
-			return false
+		if partCount == len(parts) || part == "" || part[0] == '+' ||
+			(partCount == 0 && len(part) > 1 && part[0] == '0') {
+			return parts, false
 		}
 		value, err := strconv.ParseUint(
 			part,
@@ -480,13 +512,12 @@ func ValidExternalVersion(version string) bool {
 			externalVersionPartBits,
 		)
 		if err != nil {
-			return false
+			return parts, false
 		}
-		if partCount == 1 && strconv.FormatUint(value, externalVersionRadix) != part {
-			return false
-		}
+		parts[partCount] = uint32(value)
+		partCount++
 	}
-	return partCount > 0
+	return parts, partCount > 0
 }
 
 func ValidGitHubRepository(repository string) bool {

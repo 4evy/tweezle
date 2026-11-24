@@ -73,4 +73,5 @@ tab_hover_cards = "tooltip" # none | tooltip
 # Autocomplete: search | search-bookmarks | search-chrome | search-bookmarks-chrome
 
 # The audited ungoogled build supports Manifest V2 and unpacked uBlock Origin
+# Browser-side update behavior does not affect Tweezle's separate downloads
 # Follow the [ublock.origin] recipe in ublock/ublock.toml to configure it

@@ -223,7 +223,6 @@ func (browser Browser) installExtensions(
 		Catalog:              browser.Extensions,
 		ChromeVersion:        chromeVersion,
 		Download:             httpClient.Download,
-		Resolve:              httpClient.ResolveURL,
 		ResolveLatestRelease: httpClient.ResolveLatestGitHubRelease,
 		CheckoutGit:          gitClient.Checkout,
 		ExcludedIDs:          excludedIDs,

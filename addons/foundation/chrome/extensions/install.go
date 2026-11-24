@@ -1,7 +1,6 @@
 package extensions
 
 import (
-	"archive/zip"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -10,18 +9,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"maps"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
 
 	fileutil "github.com/4evy/tweezle/internal/file"
-	crx3 "github.com/mediabuyerbot/go-crx3"
 )
 
 // The Chromium-sensitive contracts in this file were audited on 2026-08-23.
@@ -65,8 +61,7 @@ const (
 	chromeStoreResponseRedirect   = "redirect"
 	// This installer needs a complete CRX archive, so it requests CRX3 only. The
 	// Chromium updater also advertises "puff", but this installer has no delta
-	// patch pipeline; current Chromium's verifier and our go-crx3 preflight
-	// parser also do not accept CRX2.
+	// patch pipeline. The artifact preflight accepts only full CRX3 files.
 	// Chromium updater query: https://chromium.googlesource.com/chromium/src/+/879b13b2715914eb6263fbbfa1eae7e1d49f9c1c/components/update_client/update_query_params.cc#89
 	// Chromium verifier formats: https://chromium.googlesource.com/chromium/src/+/879b13b2715914eb6263fbbfa1eae7e1d49f9c1c/components/crx_file/crx_verifier.h#16
 	chromeStoreCRXFormats    = "crx3"
@@ -98,11 +93,6 @@ type externalExtensionState struct {
 	Directories map[string]externalExtensionDirectoryState `json:"directories"`
 }
 
-type extensionVerifiers struct {
-	file func(path, checksum string) error
-	crx  func(path, extensionID string) error
-}
-
 type unpackedExtensionPaths struct {
 	archive     string
 	unpackedDir string
@@ -113,6 +103,12 @@ type unpackedExtensionPaths struct {
 type installedUnpackedExtension struct {
 	ID   string
 	Path string
+}
+
+type stagedUnpackedExtension struct {
+	root string
+	path string
+	id   string
 }
 
 func Install(ctx context.Context, options Options) (Result, error) {
@@ -132,17 +128,20 @@ func Install(ctx context.Context, options Options) (Result, error) {
 	if err := os.MkdirAll(crxDir, fileutil.DefaultDirPerm); err != nil {
 		return Result{}, err
 	}
-	verifiers := options.verifiers()
-	installed, err := installChromeStoreExtensions(ctx, options, crxDir, verifiers.crx)
+	verifyFile := options.Verify
+	if verifyFile == nil {
+		verifyFile = VerifyFileSHA256
+	}
+	installed, err := installChromeStoreExtensions(ctx, options, crxDir)
 	if err != nil {
 		return Result{}, err
 	}
-	downloaded, err := installDownloadedExtensions(ctx, options, crxDir, verifiers)
+	downloaded, err := installDownloadedExtensions(ctx, options, crxDir, verifyFile)
 	if err != nil {
 		return Result{}, err
 	}
 	installed = append(installed, downloaded...)
-	result, err := installUnpackedExtensions(ctx, options, verifiers.file)
+	result, err := installUnpackedExtensions(ctx, options, verifyFile)
 	if err != nil {
 		return Result{}, err
 	}
@@ -168,7 +167,7 @@ func normalizeInstallPaths(options *Options) error {
 	if err != nil {
 		return fmt.Errorf("resolve extension installation root: %w", err)
 	}
-	options.Root = filepath.Clean(root)
+	options.Root = root
 
 	directories := make([]string, 0, len(options.ExternalDirs))
 	seen := map[string]bool{}
@@ -180,7 +179,6 @@ func normalizeInstallPaths(options *Options) error {
 		if err != nil {
 			return fmt.Errorf("resolve external extension directory %q: %w", directory, err)
 		}
-		absolute = filepath.Clean(absolute)
 		if seen[absolute] {
 			continue
 		}
@@ -191,25 +189,10 @@ func normalizeInstallPaths(options *Options) error {
 	return nil
 }
 
-func (options Options) verifiers() extensionVerifiers {
-	verifiers := extensionVerifiers{
-		file: options.Verify,
-		crx:  options.VerifyCRX,
-	}
-	if verifiers.file == nil {
-		verifiers.file = VerifyFileSHA256
-	}
-	if verifiers.crx == nil {
-		verifiers.crx = verifyCRXID
-	}
-	return verifiers
-}
-
 func installChromeStoreExtensions(
 	ctx context.Context,
 	options Options,
 	crxDir string,
-	verifyCRX func(path, extensionID string) error,
 ) ([]installedCRXExtension, error) {
 	installed := make(
 		[]installedCRXExtension,
@@ -233,26 +216,10 @@ func installChromeStoreExtensions(
 		if err != nil {
 			return nil, err
 		}
-		resolvedURL := downloadURL
-		if options.Resolve != nil {
-			resolvedURL, err = options.Resolve(ctx, downloadURL)
-			if err != nil {
-				return nil, err
-			}
+		download := DownloadedExtension{
+			ExtensionIdentity: extension.ExtensionIdentity, URL: downloadURL,
 		}
-		version, err := ChromeStoreVersionFromCRXURL(extension.ID, resolvedURL)
-		if err != nil {
-			return nil, err
-		}
-		installedExtension, err := installCRXExtension(
-			ctx,
-			crxDir,
-			DownloadedExtension{
-				ID: extension.ID, Name: extension.Name, Version: version, URL: downloadURL,
-			},
-			options.Download,
-			func(path string) error { return verifyCRX(path, extension.ID) },
-		)
+		installedExtension, err := installChromeStoreCRX(ctx, options, crxDir, download)
 		if err != nil {
 			return nil, err
 		}
@@ -261,11 +228,56 @@ func installChromeStoreExtensions(
 	return installed, nil
 }
 
+func installChromeStoreCRX(
+	ctx context.Context,
+	options Options,
+	directory string,
+	extension DownloadedExtension,
+) (result installedCRXExtension, err error) {
+	if options.VerifyCRX != nil {
+		if options.Resolve == nil {
+			return result, errors.New("custom Chrome Store CRX verification requires a version resolver")
+		}
+		resolved, err := options.Resolve(ctx, extension.URL)
+		if err != nil {
+			return result, err
+		}
+		if !validHTTPURL(resolved) {
+			return result, errors.New("resolved Chrome Store CRX URL must use HTTP(S)")
+		}
+		extension.Version, err = ChromeStoreVersionFromCRXURL(extension.ID, resolved)
+		if err != nil {
+			return result, err
+		}
+		return installCRXExtension(ctx, directory, extension, options.Download, func(path string) error {
+			return options.VerifyCRX(path, extension.ID)
+		})
+	}
+
+	// The update service picks a version at GET time. Authenticate that exact
+	// payload and use its manifest, not a separate request or a URL filename,
+	// to identify the artifact we publish.
+	err = withStagedDownload(ctx, directory, extension.ID+crxFileExtension, extension.URL, options.Download, func(path string) error {
+		version, err := inspectCRX(path, extension.ID, true)
+		if err != nil {
+			return err
+		}
+		extension.Version = version
+		target := crxCachePath(directory, extension)
+		if err := os.Rename(path, target); err != nil {
+			return err
+		}
+		result = installedCRXExtension{DownloadedExtension: extension, Path: target}
+		return nil
+	})
+	return result, err
+}
+
 func installDownloadedExtensions(
 	ctx context.Context,
 	options Options,
 	crxDir string,
-	verifiers extensionVerifiers,
+	verifyFile func(path, checksum string) error,
 ) ([]installedCRXExtension, error) {
 	installed := make([]installedCRXExtension, 0, len(options.Catalog.CRX))
 	for _, extension := range options.Catalog.CRX {
@@ -278,10 +290,17 @@ func installDownloadedExtensions(
 			extension,
 			options.Download,
 			func(path string) error {
-				if err := verifiers.file(path, extension.SHA256); err != nil {
+				if err := verifyFile(path, extension.SHA256); err != nil {
 					return fmt.Errorf("verify %s: %w", extension.Name, err)
 				}
-				return verifiers.crx(path, extension.ID)
+				if options.VerifyCRX != nil {
+					return options.VerifyCRX(path, extension.ID)
+				}
+				version, err := inspectCRX(path, extension.ID, false)
+				if err != nil {
+					return err
+				}
+				return checkManifestVersion(extension.Name, version, extension.Version)
 			},
 		)
 		if err != nil {
@@ -508,10 +527,7 @@ func installCRXExtension(
 	download DownloadFunc,
 	verify func(path string) error,
 ) (installedCRXExtension, error) {
-	target := filepath.Join(
-		directory,
-		extension.ID+"-"+extension.Version+crxFileExtension,
-	)
+	target := crxCachePath(directory, extension)
 	if err := ensureDownloaded(ctx, target, extension.URL, download, verify); err != nil {
 		return installedCRXExtension{}, err
 	}
@@ -521,17 +537,21 @@ func installCRXExtension(
 	}, nil
 }
 
+func crxCachePath(directory string, extension DownloadedExtension) string {
+	return filepath.Join(directory, extension.ID+"-"+extension.Version+crxFileExtension)
+}
+
 func installUnpackedExtension(
 	ctx context.Context,
 	options Options,
 	verify func(path, checksum string) error,
 	extension ZIPExtension,
-) (installedUnpackedExtension, error) {
+) (_ installedUnpackedExtension, err error) {
 	artifact, err := resolveReleaseArtifact(ctx, options, extension)
 	if err != nil {
 		return installedUnpackedExtension{}, err
 	}
-	if !ValidExternalVersion(artifact.Version) || !ValidURL(artifact.URL) || !ValidSHA256(artifact.SHA256) {
+	if !ValidExternalVersion(artifact.Version) || !validHTTPURL(artifact.URL) || !ValidSHA256(artifact.SHA256) {
 		return installedUnpackedExtension{}, fmt.Errorf(
 			"%s release metadata is incomplete",
 			extension.Name,
@@ -541,7 +561,8 @@ func installUnpackedExtension(
 	if err != nil {
 		return installedUnpackedExtension{}, err
 	}
-	if err := ensureDownloaded(
+	var staged stagedUnpackedExtension
+	err = ensureDownloaded(
 		ctx,
 		paths.archive,
 		artifact.URL,
@@ -550,12 +571,18 @@ func installUnpackedExtension(
 			if err := verify(path, artifact.SHA256); err != nil {
 				return fmt.Errorf("verify %s: %w", extension.Name, err)
 			}
-			return nil
+			var err error
+			staged, err = stageUnpackedArchive(paths, extension, path, artifact.Version)
+			return err
 		},
-	); err != nil {
+	)
+	if staged.root != "" {
+		defer func() { err = errors.Join(err, os.RemoveAll(staged.root)) }()
+	}
+	if err != nil {
 		return installedUnpackedExtension{}, err
 	}
-	return installUnpackedArchive(paths, extension, artifact.Version)
+	return publishUnpackedDirectory(staged.path, paths.target, extension.Name, staged.id)
 }
 
 func prepareUnpackedExtensionPaths(
@@ -581,40 +608,51 @@ func prepareUnpackedExtensionPaths(
 	}, nil
 }
 
-func installUnpackedArchive(
+func stageUnpackedArchive(
 	paths unpackedExtensionPaths,
 	extension ZIPExtension,
-	version string,
-) (_ installedUnpackedExtension, err error) {
+	archive, version string,
+) (_ stagedUnpackedExtension, err error) {
 	temporaryDir, err := os.MkdirTemp(paths.unpackedDir, paths.tempPrefix)
 	if err != nil {
-		return installedUnpackedExtension{}, err
+		return stagedUnpackedExtension{}, err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(temporaryDir)) }()
-	if err := ExtractZipFile(paths.archive, temporaryDir); err != nil {
-		return installedUnpackedExtension{}, fmt.Errorf("extract %s: %w", extension.Name, err)
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, os.RemoveAll(temporaryDir))
+		}
+	}()
+	if err := ExtractZipFile(archive, temporaryDir); err != nil {
+		return stagedUnpackedExtension{}, fmt.Errorf("extract %s: %w", extension.Name, err)
 	}
 	sourceDir := filepath.Join(temporaryDir, filepath.FromSlash(extension.ArchiveRoot))
 	if extension.ManifestKey != "" {
 		manifestPath := filepath.Join(sourceDir, manifestFilename)
-		data, err := os.ReadFile(manifestPath)
+		data, err := readUnpackedManifest(manifestPath)
 		if err != nil {
-			return installedUnpackedExtension{}, err
+			return stagedUnpackedExtension{}, err
 		}
 		var manifest map[string]jsontext.Value
 		if err := json.Unmarshal(data, &manifest); err != nil {
-			return installedUnpackedExtension{}, err
+			return stagedUnpackedExtension{}, err
+		}
+		if manifest == nil {
+			return stagedUnpackedExtension{}, errors.New("manifest must be a JSON object")
 		}
 		key, err := json.Marshal(extension.ManifestKey)
 		if err != nil {
-			return installedUnpackedExtension{}, err
+			return stagedUnpackedExtension{}, err
 		}
 		manifest["key"] = key
 		if _, err := fileutil.WriteJSONIfChanged(manifestPath, manifest, fileutil.DefaultFilePerm); err != nil {
-			return installedUnpackedExtension{}, err
+			return stagedUnpackedExtension{}, err
 		}
 	}
-	return installUnpackedDirectory(sourceDir, paths.target, extension.Name, version)
+	id, err := validateUnpackedManifest(sourceDir, extension.Name, version)
+	if err != nil {
+		return stagedUnpackedExtension{}, err
+	}
+	return stagedUnpackedExtension{root: temporaryDir, path: sourceDir, id: id}, nil
 }
 
 func installGitExtension(
@@ -659,26 +697,15 @@ func installGitExtension(
 			extension.Commit,
 		)
 	}
-	return installUnpackedDirectory(
-		temporaryDir,
-		filepath.Join(unpackedDir, extension.ID),
-		extension.Name,
-		"",
-	)
-}
-
-func installUnpackedDirectory(
-	sourceDir,
-	target,
-	name,
-	version string,
-) (installedUnpackedExtension, error) {
-	// Validate while the staged tree is still isolated. Replacing the whole tree
-	// ensures files deleted by an update do not survive it.
-	installedID, err := validateUnpackedManifest(sourceDir, name, version)
+	id, err := validateUnpackedManifest(temporaryDir, extension.Name, "")
 	if err != nil {
 		return installedUnpackedExtension{}, err
 	}
+	return publishUnpackedDirectory(temporaryDir, filepath.Join(unpackedDir, extension.ID), extension.Name, id)
+}
+
+func publishUnpackedDirectory(sourceDir, target, name, installedID string) (installedUnpackedExtension, error) {
+	// Replacing the whole staged tree removes files deleted by the update
 	if err := replaceDirectory(sourceDir, target); err != nil {
 		return installedUnpackedExtension{}, err
 	}
@@ -706,7 +733,12 @@ func replaceDirectory(source, target string) (err error) {
 	if err != nil {
 		return fmt.Errorf("reserve previous extension directory: %w", err)
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(backupRoot)) }()
+	keepBackup := false
+	defer func() {
+		if !keepBackup {
+			err = errors.Join(err, os.RemoveAll(backupRoot))
+		}
+	}()
 
 	backup := filepath.Join(backupRoot, "tree")
 	hadTarget := true
@@ -722,9 +754,10 @@ func replaceDirectory(source, target string) (err error) {
 			return installErr
 		}
 		if restoreErr := os.Rename(backup, target); restoreErr != nil {
+			keepBackup = true
 			return errors.Join(
 				installErr,
-				fmt.Errorf("restore previous extension directory %s: %w", target, restoreErr),
+				fmt.Errorf("restore previous extension directory %s (backup retained at %s): %w", target, backup, restoreErr),
 			)
 		}
 		return installErr
@@ -771,21 +804,41 @@ func ensureDownloaded(
 	download DownloadFunc,
 	verify func(path string) error,
 ) error {
-	// A cached artifact is reusable only after the same verifier used for a new
-	// download accepts it. A corrupt or stale cache is overwritten by Download;
-	// callers choose whether that verifier means an exact SHA-256 pin, a CRX
-	// declared-ID preflight, or both.
-	if _, err := os.Stat(target); err == nil {
+	if _, err := boundedFileSize(target, maxArtifactBytes); err == nil {
 		if err := verify(target); err == nil {
 			return nil
 		}
-	} else if !errors.Is(err, os.ErrNotExist) {
+	}
+	return withStagedDownload(ctx, filepath.Dir(target), filepath.Base(target), rawURL, download, func(path string) error {
+		if err := verify(path); err != nil {
+			return err
+		}
+		return os.Rename(path, target)
+	})
+}
+
+func withStagedDownload(
+	ctx context.Context,
+	directory, name, rawURL string,
+	download DownloadFunc,
+	publish func(path string) error,
+) (err error) {
+	if !validHTTPURL(rawURL) {
+		return errors.New("extension download URL must use HTTP(S)")
+	}
+	stage, err := os.MkdirTemp(directory, ".download-")
+	if err != nil {
 		return err
 	}
-	if err := download(ctx, target, rawURL); err != nil {
+	defer func() { err = errors.Join(err, os.RemoveAll(stage)) }()
+	path := filepath.Join(stage, name)
+	if err := download(ctx, path, rawURL); err != nil {
 		return err
 	}
-	return verify(target)
+	if _, err := boundedFileSize(path, maxArtifactBytes); err != nil {
+		return err
+	}
+	return publish(path)
 }
 
 func validateUnpackedManifest(
@@ -793,7 +846,7 @@ func validateUnpackedManifest(
 	name,
 	version string,
 ) (string, error) {
-	data, err := os.ReadFile(filepath.Join(extensionDir, manifestFilename))
+	data, err := readUnpackedManifest(filepath.Join(extensionDir, manifestFilename))
 	if err != nil {
 		return "", fmt.Errorf("read %s manifest: %w", name, err)
 	}
@@ -810,16 +863,8 @@ func validateUnpackedManifest(
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return "", fmt.Errorf("parse %s manifest: %w", name, err)
 	}
-	if !ValidExternalVersion(manifest.Version) {
-		return "", fmt.Errorf("%s manifest has invalid version %q", name, manifest.Version)
-	}
-	if version != "" && manifest.Version != version {
-		return "", fmt.Errorf(
-			"%s manifest version is %q, want %q",
-			name,
-			manifest.Version,
-			version,
-		)
+	if err := checkManifestVersion(name, manifest.Version, version); err != nil {
+		return "", err
 	}
 	if len(manifest.Key) == 0 {
 		return "", nil
@@ -833,6 +878,23 @@ func validateUnpackedManifest(
 		return "", fmt.Errorf("parse %s manifest public key: %w", name, err)
 	}
 	return installedID, nil
+}
+
+func checkManifestVersion(name, actual, expected string) error {
+	if expected == "" {
+		if !ValidExternalVersion(actual) {
+			return fmt.Errorf("%s manifest has invalid version %q", name, actual)
+		}
+		return nil
+	}
+	order, err := CompareExternalVersions(actual, expected)
+	if err != nil {
+		return fmt.Errorf("%s manifest version: %w", name, err)
+	}
+	if order != 0 {
+		return fmt.Errorf("%s manifest version is %q, want %q", name, actual, expected)
+	}
+	return nil
 }
 
 // UnpackedManifestID returns the identity Chromium derives from a manifest key
@@ -920,82 +982,10 @@ func collapsePEMWhitespace(value string) string {
 	return string(result)
 }
 
-// ExtractZipFile extracts regular files and directories without allowing an
-// archive entry to escape destination. Backslashes are normalized before the
-// slash-oriented clean so Windows spelling cannot hide ".."; Localize and
-// IsLocal reject absolute/parent paths; os.Root keeps filesystem traversal
-// beneath the already-open destination even in the presence of symlinks.
-// Symlinks, devices, and all other non-regular entries are intentionally
-// skipped instead of materialized.
-// Root confinement: https://pkg.go.dev/os#Root
-func ExtractZipFile(zipPath, destination string) (err error) {
-	archive, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return err
-	}
-	defer func() { err = errors.Join(err, archive.Close()) }()
-	root, err := os.OpenRoot(destination)
-	if err != nil {
-		return err
-	}
-	defer func() { err = errors.Join(err, root.Close()) }()
-	for _, entry := range archive.File {
-		if err := extractZipEntry(root, entry); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func extractZipEntry(root *os.Root, entry *zip.File) (err error) {
-	clean := path.Clean(strings.ReplaceAll(entry.Name, "\\", "/"))
-	if clean == "." {
-		return nil
-	}
-	target, err := filepath.Localize(clean)
-	if err != nil || !filepath.IsLocal(target) {
-		return fmt.Errorf("archive entry escapes destination: %s", entry.Name)
-	}
-	mode := entry.Mode()
-	if mode.IsDir() {
-		return root.MkdirAll(target, permOrDefault(mode, fileutil.DefaultDirPerm))
-	}
-	if !mode.IsRegular() {
-		return nil
-	}
-	source, err := entry.Open()
-	if err != nil {
-		return err
-	}
-	defer func() { err = errors.Join(err, source.Close()) }()
-	if err := root.MkdirAll(filepath.Dir(target), fileutil.DefaultDirPerm); err != nil {
-		return err
-	}
-	destination, err := root.OpenFile(
-		target,
-		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
-		permOrDefault(mode, fileutil.DefaultFilePerm),
-	)
-	if err != nil {
-		return err
-	}
-	_, copyErr := io.Copy(destination, source)
-	closeErr := destination.Close()
-	return errors.Join(copyErr, closeErr)
-}
-
-func permOrDefault(mode fs.FileMode, fallback fs.FileMode) fs.FileMode {
-	if permission := mode.Perm(); permission != 0 {
-		return permission
-	}
-	return fallback
-}
-
 // VerifyFileSHA256 streams path through SHA-256 and compares it with checksum.
 // checksum may be lowercase/uppercase hex, "sha256:"-prefixed hex, or an SRI
 // "sha256-" base64 digest; parseSHA256 requires exactly 32 decoded bytes.
-// This authenticates pinned artifacts before extraction. It is separate from
-// CRX proof verification, which Chromium performs when loading a CRX.
+// This authenticates pinned bytes independently of the browser's CRX policy
 func VerifyFileSHA256(path, checksum string) (err error) {
 	want, err := parseSHA256(checksum)
 	if err != nil {
@@ -1027,14 +1017,18 @@ func UnpackedExtensionID(extensionPath string) string {
 
 func extensionIDFromBytes(input []byte) string {
 	sum := sha256.Sum256(input)
-	id := make([]byte, extensionIDLength)
-	for index, value := range sum[:extensionIDLength/extensionIDCharactersPerByte] {
+	return extensionIDFromHashPrefix(sum[:extensionIDLength/extensionIDCharactersPerByte])
+}
+
+func extensionIDFromHashPrefix(prefix []byte) string {
+	var id [extensionIDLength]byte
+	for index, value := range prefix {
 		id[index*extensionIDCharactersPerByte] =
 			extensionIDAlphabetStart + value>>extensionIDHighNibbleShift
 		id[index*extensionIDCharactersPerByte+1] =
 			extensionIDAlphabetStart + value&extensionIDNibbleMask
 	}
-	return string(id)
+	return string(id[:])
 }
 
 // ChromeStoreCRXDownloadURLForVersion builds the redirect form of the Omaha
@@ -1048,6 +1042,9 @@ func extensionIDFromBytes(input []byte) string {
 // Source: https://chromium.googlesource.com/chromium/src/+/879b13b2715914eb6263fbbfa1eae7e1d49f9c1c/extensions/browser/webstore_installer.cc#166
 // Helium proxy patch: https://github.com/imputnet/helium/blob/208a56bab803ceda8202f8c79dd0e9bfcffe600a/patches/helium/core/proxy-extension-downloads.patch
 func ChromeStoreCRXDownloadURLForVersion(updateURL, id, chromeVersion string) (string, error) {
+	if !ValidExtensionID(id) {
+		return "", fmt.Errorf("invalid Chrome Store extension ID %q", id)
+	}
 	if !ValidExternalVersion(chromeVersion) {
 		return "", fmt.Errorf("invalid Chrome product version %q", chromeVersion)
 	}
@@ -1055,15 +1052,21 @@ func ChromeStoreCRXDownloadURLForVersion(updateURL, id, chromeVersion string) (s
 	if err != nil {
 		return "", fmt.Errorf("parse Chrome Store update URL for %s: %w", id, err)
 	}
-	parsed.RawQuery = url.Values{
-		chromeStoreResponseKey:       {chromeStoreResponseRedirect},
-		chromeStoreProductVersionKey: {chromeVersion},
-		chromeStoreAcceptFormatKey:   {chromeStoreCRXFormats},
-		chromeStoreOSKey:             {chromiumUpdateOS()},
-		chromeStoreArchitectureKey:   {chromiumUpdateArchitecture()},
-		chromeStoreProductKey:        {chromeStoreProduct},
-		chromeStoreExtensionKey:      {"id=" + id + chromeStoreInstallSuffix},
-	}.Encode()
+	if !isHTTPURL(parsed) {
+		return "", errors.New("expected an HTTP(S) Chrome Store update URL")
+	}
+	query, err := url.ParseQuery(parsed.RawQuery)
+	if err != nil {
+		return "", fmt.Errorf("parse Chrome Store update query for %s: %w", id, err)
+	}
+	query.Set(chromeStoreResponseKey, chromeStoreResponseRedirect)
+	query.Set(chromeStoreProductVersionKey, chromeVersion)
+	query.Set(chromeStoreAcceptFormatKey, chromeStoreCRXFormats)
+	query.Set(chromeStoreOSKey, chromiumUpdateOS())
+	query.Set(chromeStoreArchitectureKey, chromiumUpdateArchitecture())
+	query.Set(chromeStoreProductKey, chromeStoreProduct)
+	query.Set(chromeStoreExtensionKey, "id="+id+chromeStoreInstallSuffix)
+	parsed.RawQuery = query.Encode()
 	return parsed.String(), nil
 }
 
@@ -1099,8 +1102,8 @@ func chromiumUpdateArchitecture() string {
 
 // ChromeStoreVersionFromCRXURL extracts the version from the redirect target's
 // conventional <UPPERCASE_ID>_<underscore-version>.crx filename. This is update
-// service response parsing, not CRX parsing; a service with another redirect
-// convention must provide compatible metadata or use a pinned CRX entry.
+// service response parsing for custom integrations. The built-in installer
+// derives the version from the verified manifest instead
 func ChromeStoreVersionFromCRXURL(id, crxURL string) (string, error) {
 	parsed, err := url.Parse(crxURL)
 	if err != nil {
@@ -1121,40 +1124,6 @@ func ChromeStoreVersionFromCRXURL(id, crxURL string) (string, error) {
 		return "", fmt.Errorf("invalid Chrome Store CRX version %q for %s", version, id)
 	}
 	return version, nil
-}
-
-// verifyCRXID checks the extension ID declared by a CRX3 container.
-//
-// CRX3 starts with "Cr24", little-endian version 3, and a little-endian
-// protobuf-header length, followed by CrxFileHeader and the ZIP payload. The
-// header's SignedData carries the 16-byte CRX ID. A real verifier must also
-// prove that a developer key whose SHA-256 prefix yields that ID signed
-// "CRX3 SignedData\x00" + signed-data length + signed data + ZIP payload.
-//
-// go-crx3.ID only reads the declared SignedData ID; it does not verify those
-// proofs. Pinned CRXs are independently authenticated by their configured
-// SHA-256, and Chromium verifies CRX3 proofs when it installs the external CRX.
-// Keep that trust boundary explicit: this helper alone is not signature
-// verification. The dependency also uses unchecked slices for hostile header
-// lengths, so recover converts any parser panic into a closed verification
-// failure rather than letting malformed network input terminate the process.
-// Format: https://chromium.googlesource.com/chromium/src/+/879b13b2715914eb6263fbbfa1eae7e1d49f9c1c/components/crx_file/crx3.proto#9
-// Chromium verifier: https://chromium.googlesource.com/chromium/src/+/879b13b2715914eb6263fbbfa1eae7e1d49f9c1c/components/crx_file/crx_verifier.cc#155
-// Parser used here: https://github.com/mediabuyerbot/go-crx3/blob/v1.7.0/id.go#L22-L50
-func verifyCRXID(path, want string) (err error) {
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			err = fmt.Errorf("read CRX extension ID from %s: %v", path, recovered)
-		}
-	}()
-	got, err := crx3.ID(path)
-	if err != nil {
-		return fmt.Errorf("read CRX extension ID from %s: %w", path, err)
-	}
-	if got != want {
-		return fmt.Errorf("CRX %s has extension ID %s, want %s", path, got, want)
-	}
-	return nil
 }
 
 func writeExternalJSON(path string, value map[string]string) error {

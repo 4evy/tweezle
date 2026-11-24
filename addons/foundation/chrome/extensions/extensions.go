@@ -69,8 +69,8 @@ type UpdateURLExtension struct {
 }
 
 // DownloadedExtension is a pinned CRX artifact. SHA256 authenticates the exact
-// downloaded bytes; ID is also checked against the ID declared by the CRX3
-// header before the artifact is exposed to Chromium.
+// downloaded bytes. The CRX3 ID and manifest version must also match before
+// the artifact is exposed to Chromium.
 type DownloadedExtension struct {
 	ExtensionIdentity `toml:",inline"`
 	Version           string `toml:"version"`
@@ -142,13 +142,13 @@ type Options struct {
 	Catalog       Catalog
 	ChromeVersion string
 	Download      DownloadFunc
-	Resolve       ResolveURLFunc
-	Verify        func(path, checksum string) error
-	// VerifyCRX may replace the default CRX3 declared-ID check. The default is
-	// deliberately not a complete CRX signature verifier; Chromium performs
-	// that verification when it consumes the external-extension definition.
-	// Chromium: https://chromium.googlesource.com/chromium/src/+/879b13b2715914eb6263fbbfa1eae7e1d49f9c1c/components/crx_file/crx_verifier.cc#155
-	// Parser: https://github.com/mediabuyerbot/go-crx3/blob/v1.7.0/id.go#L22-L50
+	// Resolve supplies version metadata only for a trusted custom Chrome Store
+	// verifier. The built-in preflight uses the downloaded manifest instead.
+	Resolve ResolveURLFunc
+	Verify  func(path, checksum string) error
+	// VerifyCRX replaces the built-in ID, version, and proof preflight. A custom
+	// verifier must authenticate the payload for extensionID and the version in
+	// the staged filename. Chromium still checks it against browser policy.
 	VerifyCRX            func(path, extensionID string) error
 	ResolveLatestRelease ResolveLatestReleaseFunc
 	CheckoutGit          CheckoutGitFunc

@@ -13,8 +13,9 @@ require (
 	github.com/chromedp/chromedp v0.24.0
 	github.com/daku10/go-lz-string v0.0.7
 	github.com/google/go-cmp v0.7.0
-	github.com/google/go-github/v92 v92.0.0
+	github.com/google/go-github/v93 v93.0.0
 	github.com/google/renameio/v2 v2.0.2
+	github.com/gophertools/requests/v2 v2.26.0
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/iancoleman/orderedmap v0.3.0
 	github.com/mediabuyerbot/go-crx3 v1.7.1
@@ -26,6 +27,7 @@ require (
 	github.com/syndtr/goleveldb v1.0.0
 	golang.org/x/net v0.63.0
 	golang.org/x/sys v0.50.0
+	google.golang.org/protobuf v1.36.12
 	gopkg.in/ini.v1 v1.68.0
 )
 
@@ -45,5 +47,4 @@ require (
 	github.com/spf13/pflag v1.1.0 // indirect
 	github.com/stretchr/testify v1.12.1 // indirect
 	golang.org/x/text v0.44.0 // indirect
-	google.golang.org/protobuf v1.36.12 // indirect
 )
