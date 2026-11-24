@@ -199,9 +199,9 @@ func (client HTTPClient) httpClient(headerURL string, maxBytes int64) *http.Clie
 				remaining = 0
 			}
 			response.Body = &boundedResponseBody{
-				LimitedReader: io.LimitedReader{R: response.Body, N: remaining},
-				Closer:        response.Body,
-				limit:         maxBytes,
+				R: response.Body, N: remaining,
+				Closer: response.Body,
+				limit:  maxBytes,
 			}
 		}
 		return response, err
