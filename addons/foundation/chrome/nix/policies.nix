@@ -5,6 +5,8 @@
 }:
 
 let
+  enumOr = fallback: values: if values == [ ] then fallback else schema.types.enum values;
+
   optionType =
     rule:
     if rule.type == "bool" then
@@ -12,9 +14,9 @@ let
     else if rule.type == "choice" then
       schema.types.enum (builtins.attrNames rule.choices)
     else if rule.type == "int" then
-      schema.types.enum rule.allowed_ints
+      enumOr schema.types.int (rule.allowed_ints or [ ])
     else
-      schema.types.enum rule.allowed_strings;
+      enumOr schema.types.str (rule.allowed_strings or [ ]);
 
   description = rule: ''
     ${rule.description}
@@ -24,14 +26,10 @@ let
     Reference: ${rule.source}
   '';
 
-  nested = lib.attrsets.foldlAttrs (
-    options: name: rule:
-    lib.attrsets.recursiveUpdate options (
-      lib.attrsets.setAttrByPath (lib.strings.splitString "." name) (
-        schema.optional (optionType rule) (description rule)
-      )
-    )
-  ) { } metadata.entries;
+  nested = lib.attrsets.updateManyAttrsByPath (lib.attrsets.mapAttrsToList (name: rule: {
+    path = lib.strings.splitString "." name;
+    update = _: schema.optional (optionType rule) (description rule);
+  }) metadata.entries) { };
 
   settings = lib.attrsets.mapAttrs (
     _: value:
