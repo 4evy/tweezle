@@ -18,6 +18,7 @@ import (
 	xdgdirs "github.com/4evy/tweezle/internal/xdg"
 	"github.com/buildkite/shellwords"
 	"github.com/google/renameio/v2"
+	"golang.org/x/sys/unix"
 )
 
 const launcherConfigSuffix = ".tweezle-launcher.json"
@@ -129,7 +130,7 @@ func runLauncher(
 	if err != nil {
 		return true, err
 	}
-	executable, err := execLookPath(command[0], environ)
+	executable, err := execLookPath(command[0])
 	if err != nil {
 		return true, fmt.Errorf("find browser executable %s: %w", command[0], err)
 	}
@@ -258,20 +259,14 @@ func readFlags(path, configHome string) ([]string, error) {
 	return flags, nil
 }
 
-func execLookPath(file string, environ []string) (string, error) {
-	if strings.ContainsRune(file, filepath.Separator) {
-		return file, nil
+func execLookPath(file string) (string, error) {
+	if strings.ContainsRune(file, filepath.Separator) || os.Getenv(envPath) != "" {
+		return exec.LookPath(file)
 	}
-	path := environmentMap(environ)[envPath]
-	if path == "" {
-		path = defaultExecutablePath
-	}
-	for _, directory := range filepath.SplitList(path) {
+	for _, directory := range filepath.SplitList(defaultExecutablePath) {
 		candidate := filepath.Join(directory, file)
 		info, err := os.Stat(candidate)
-		if err == nil &&
-			info.Mode().IsRegular() &&
-			info.Mode().Perm()&fileutil.ExecutablePerm != 0 {
+		if err == nil && info.Mode().IsRegular() && unix.Access(candidate, unix.X_OK) == nil {
 			return candidate, nil
 		}
 	}
