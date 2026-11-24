@@ -13,6 +13,7 @@
 # profile or managed preferences; Chrome does not read the JSON file directly
 # Verify the resulting policies at chrome://policy
 # The NixOS module installs its Chrome policy file automatically
+# For the current vendor policy reference, see https://chromeenterprise.google/policies/
 
 [browser]
 name = "Google Chrome"

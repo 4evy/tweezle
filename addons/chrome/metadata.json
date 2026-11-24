@@ -1,10 +1,10 @@
 {
-  "audited_against": "Official Chrome Enterprise policy_templates_en-US.json, SHA-256 9fd8dadfe3182e73791aca630884465945b1ef26bf803956c539dc60364ffaf1 on 2026-10-09",
+  "audited_against": "Chromium 155.0.8059.39 policy definitions at commit 3ff7ac5a9224be9156d7f8703a06e22890aafd34 and the official Chrome Enterprise policy_templates_en-US.json, SHA-256 9fd8dadfe3182e73791aca630884465945b1ef26bf803956c539dc60364ffaf1 on 2026-10-09",
   "entries": {
     "signin": {
       "policy": "BrowserSignin",
       "description": "Control browser sign-in; forced sign-in needs Chrome 145 or newer on Linux.",
-      "source": "https://chromeenterprise.google/policies/#BrowserSignin",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/Miscellaneous/BrowserSignin.yaml",
       "supported_on": ["chrome.*:70-", "android:70-", "ios:90-"],
       "type": "choice",
       "choices": {
@@ -16,7 +16,7 @@
     "sync": {
       "policy": "SyncDisabled",
       "description": "Allow users to enable Google Sync. False disables synchronization.",
-      "source": "https://chromeenterprise.google/policies/#SyncDisabled",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/Miscellaneous/SyncDisabled.yaml",
       "supported_on": ["chrome.*:8-", "chrome_os:11-", "ios:96-"],
       "type": "bool",
       "inverse": true
@@ -24,14 +24,14 @@
     "metrics_reporting": {
       "policy": "MetricsReportingEnabled",
       "description": "Control reporting of usage and crash data to Google.",
-      "source": "https://chromeenterprise.google/policies/#MetricsReportingEnabled",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/Miscellaneous/MetricsReportingEnabled.yaml",
       "supported_on": ["chrome.*:8-", "ios:88-", "android:110-"],
       "type": "bool"
     },
     "password_manager": {
       "policy": "PasswordManagerEnabled",
       "description": "Allow saving new passwords; existing saved passwords remain accessible.",
-      "source": "https://chromeenterprise.google/policies/#PasswordManagerEnabled",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/PasswordManager/PasswordManagerEnabled.yaml",
       "supported_on": [
         "chrome.*:8-",
         "chrome_os:11-",
@@ -43,7 +43,7 @@
     "search_suggestions": {
       "policy": "SearchSuggestEnabled",
       "description": "Allow remote search suggestions in the address bar.",
-      "source": "https://chromeenterprise.google/policies/#SearchSuggestEnabled",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/Miscellaneous/SearchSuggestEnabled.yaml",
       "supported_on": [
         "chrome.*:8-",
         "chrome_os:11-",
@@ -55,7 +55,7 @@
     "shopping_list": {
       "policy": "ShoppingListEnabled",
       "description": "Allow Chrome shopping lists and price tracking.",
-      "source": "https://chromeenterprise.google/policies/#ShoppingListEnabled",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/Miscellaneous/ShoppingListEnabled.yaml",
       "supported_on": [
         "chrome.*:107-",
         "chrome_os:107-",
@@ -67,21 +67,21 @@
     "default_browser_check": {
       "policy": "DefaultBrowserSettingEnabled",
       "description": "Control startup default-browser checks; true may register Chrome as default.",
-      "source": "https://chromeenterprise.google/policies/#DefaultBrowserSettingEnabled",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/Miscellaneous/DefaultBrowserSettingEnabled.yaml",
       "supported_on": ["chrome.win7:11-", "chrome.mac:11-", "chrome.linux:11-"],
       "type": "bool"
     },
     "memory_saver": {
       "policy": "HighEfficiencyModeEnabled",
       "description": "Discard inactive background tabs to reclaim memory.",
-      "source": "https://chromeenterprise.google/policies/#HighEfficiencyModeEnabled",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/Miscellaneous/HighEfficiencyModeEnabled.yaml",
       "supported_on": ["chrome.*:108-", "chrome_os:108-"],
       "type": "bool"
     },
     "battery_saver": {
       "policy": "BatterySaverModeAvailability",
       "description": "Control battery saver when battery power is low.",
-      "source": "https://chromeenterprise.google/policies/#BatterySaverModeAvailability",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/Miscellaneous/BatterySaverModeAvailability.yaml",
       "supported_on": ["chrome.*:108-", "chrome_os:108-"],
       "type": "choice",
       "choices": {
@@ -92,7 +92,7 @@
     "incognito": {
       "policy": "IncognitoModeAvailability",
       "description": "Allow, prohibit, or require Incognito browsing.",
-      "source": "https://chromeenterprise.google/policies/#IncognitoModeAvailability",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/Miscellaneous/IncognitoModeAvailability.yaml",
       "supported_on": [
         "chrome.*:14-",
         "chrome_os:14-",
@@ -109,7 +109,7 @@
     "safe_browsing": {
       "policy": "SafeBrowsingProtectionLevel",
       "description": "Choose Chrome Safe Browsing protection.",
-      "source": "https://chromeenterprise.google/policies/#SafeBrowsingProtectionLevel",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/SafeBrowsing/SafeBrowsingProtectionLevel.yaml",
       "supported_on": [
         "chrome.*:83-",
         "chrome_os:83-",
@@ -126,7 +126,7 @@
     "https_only": {
       "policy": "HttpsOnlyMode",
       "description": "Control HTTPS-Only Mode; force_enabled is strict and force_balanced_enabled is balanced.",
-      "source": "https://chromeenterprise.google/policies/#HttpsOnlyMode",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/Miscellaneous/HttpsOnlyMode.yaml",
       "supported_on": [
         "chrome.*:94-",
         "chrome_os:94-",
@@ -144,7 +144,7 @@
     "ai.help_me_write": {
       "policy": "HelpMeWriteSettings",
       "description": "Control the AI writing assistant and use of its content to improve models.",
-      "source": "https://chromeenterprise.google/policies/#HelpMeWriteSettings",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/GenerativeAI/HelpMeWriteSettings.yaml",
       "supported_on": ["chrome.*:121-", "chrome_os:121-"],
       "type": "choice",
       "choices": {
@@ -156,7 +156,7 @@
     "ai.history_search": {
       "policy": "HistorySearchSettings",
       "description": "Control AI history search and use of its content to improve models.",
-      "source": "https://chromeenterprise.google/policies/#HistorySearchSettings",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/GenerativeAI/HistorySearchSettings.yaml",
       "supported_on": ["chrome.*:128-", "chrome_os:128-"],
       "type": "choice",
       "choices": {
@@ -168,7 +168,7 @@
     "ai.create_themes": {
       "policy": "CreateThemesSettings",
       "description": "Control AI theme creation and use of its content to improve models.",
-      "source": "https://chromeenterprise.google/policies/#CreateThemesSettings",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/GenerativeAI/CreateThemesSettings.yaml",
       "supported_on": ["chrome.*:121-", "chrome_os:121-"],
       "type": "choice",
       "choices": {
@@ -180,7 +180,7 @@
     "ai.gemini": {
       "policy": "GeminiSettings",
       "description": "Control Gemini integration; documented for macOS, not Linux.",
-      "source": "https://chromeenterprise.google/policies/#GeminiSettings",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/GenerativeAI/GeminiSettings.yaml",
       "supported_on": [
         "chrome.win:137-",
         "chrome.mac:137-",
@@ -198,7 +198,7 @@
       "policy": "AIModeSettings",
       "type": "choice",
       "description": "Control AI Mode in the address bar and new tab search box; requires Google as the default search engine.",
-      "source": "https://chromeenterprise.google/policies/#AIModeSettings",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/GenerativeAI/AIModeSettings.yaml",
       "supported_on": [
         "android:138-",
         "ios:138-",
@@ -214,7 +214,7 @@
       "policy": "GenAILocalFoundationalModelSettings",
       "type": "choice",
       "description": "Control local foundational AI model downloads; disabled also deletes an existing downloaded model.",
-      "source": "https://chromeenterprise.google/policies/#GenAILocalFoundationalModelSettings",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/GenerativeAI/GenAILocalFoundationalModelSettings.yaml",
       "supported_on": ["android:142-", "chrome.*:124-", "chrome_os:149-"],
       "choices": {
         "allowed": 0,
@@ -225,7 +225,7 @@
       "policy": "BuiltInAIAPIsEnabled",
       "type": "bool",
       "description": "Allow websites to use Chrome built-in AI APIs.",
-      "source": "https://chromeenterprise.google/policies/#BuiltInAIAPIsEnabled",
+      "source": "https://github.com/chromium/chromium/blob/3ff7ac5a9224be9156d7f8703a06e22890aafd34/components/policy/resources/templates/policy_definitions/Miscellaneous/BuiltInAIAPIsEnabled.yaml",
       "supported_on": ["chrome.*:137-", "chrome_os:137-"]
     }
   }
