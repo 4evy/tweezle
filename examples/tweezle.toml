@@ -52,8 +52,7 @@ launcher_name = "chrome"
 
 [browser.paths.linux]
 # Use the profile directory containing Preferences, e.g. Default or Profile 1
-# This selects the profile to edit; it does not change the launcher's profile
-# For Profile 1, also add "--profile-directory=Profile 1" to browser.flags
+# Set profile_dir to the profile Tweezle should configure and launch
 profile_dir = "${config_home}/chromium/Default"
 external_extension_dirs = [
   "${config_home}/chromium/External Extensions",

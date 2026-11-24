@@ -81,8 +81,9 @@ third_party = "block"
 ```
 
 On Linux, `app_dir` and `launcher_name` must point to your installed browser
-executable. For another Chromium profile, also add its
-`--profile-directory=Profile 1` flag to `browser.flags`.
+executable. Set `profile_dir` to the Chromium profile you want Tweezle to
+configure and launch. The launcher generates the matching profile switches and
+rejects flags that would select a different profile.
 
 </details>
 

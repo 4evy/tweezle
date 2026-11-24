@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strings"
 
 	foundation "github.com/4evy/tweezle/addons/foundation/chrome"
 	fileutil "github.com/4evy/tweezle/internal/file"
@@ -68,25 +67,10 @@ func (browser Browser) installFlatpak(ctx context.Context, options *InstallOptio
 		}
 	}
 	browser.Config.Paths = overlayValues(browser.Config.Paths, map[string]ModePaths{string(ModeLinux): paths})
-	profile := expandPathTemplate(options.ProfileDir)
-	if profile == "" {
-		profile = browser.Config.DefaultProfileDir(ModeLinux)
-	}
+	profile := options.ProfileDir
 	var writable []string
 	if profile != "" {
-		profile, err = filepath.Abs(profile)
-		if err != nil {
-			return err
-		}
-		for _, flag := range slices.Concat(browser.Config.Flags, options.Flags, browser.Config.Linux.WrapperFlags) {
-			name, _, _ := strings.Cut(flag, "=")
-			if name == "--user-data-dir" || name == "--profile-directory" {
-				return errors.New("flatpak profile flags conflict with profile_dir; select the profile using browser.paths.linux.profile_dir or --profile-dir")
-			}
-		}
-		dataDir := filepath.Dir(profile)
-		writable = []string{dataDir}
-		options.extraLauncherFlags = append(options.extraLauncherFlags, "--user-data-dir="+dataDir, "--profile-directory="+filepath.Base(profile))
+		writable = []string{filepath.Dir(profile)}
 	}
 	options.launcherCommand, err = config.Command(app, []string{options.Root}, writable)
 	if err != nil {

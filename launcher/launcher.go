@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/4evy/tweezle/internal/chromiumflags"
 	fileutil "github.com/4evy/tweezle/internal/file"
 	jsonutil "github.com/4evy/tweezle/internal/json"
 	xdgdirs "github.com/4evy/tweezle/internal/xdg"
@@ -36,8 +37,9 @@ const (
 )
 
 type launcherConfig struct {
-	Command   []string `json:"command"`
-	FlagsFile string   `json:"flags_file,omitempty"`
+	Command         []string `json:"command"`
+	FlagsFile       string   `json:"flags_file,omitempty"`
+	ChromiumProfile string   `json:"chromium_profile,omitempty"`
 }
 
 type execProcess func(path string, argv []string, envv []string) error
@@ -56,6 +58,15 @@ func Write(
 // WriteCommand installs a launcher for a command prefix such as flatpak run
 // Browser flags and invocation arguments follow the complete prefix
 func WriteCommand(target, launcherExecutable string, command []string, flagsFile string, flags, extraFlags []string) error {
+	return writeCommand(target, launcherExecutable, command, flagsFile, flags, extraFlags, "")
+}
+
+// WriteChromiumCommand records the fixed profile to check flags added at launch
+func WriteChromiumCommand(target, launcherExecutable string, command []string, flagsFile string, flags []string, profile string) error {
+	return writeCommand(target, launcherExecutable, command, flagsFile, flags, nil, profile)
+}
+
+func writeCommand(target, launcherExecutable string, command []string, flagsFile string, flags, extraFlags []string, profile string) error {
 	if launcherExecutable == "" {
 		return errors.New("launcher executable is required")
 	}
@@ -82,8 +93,9 @@ func WriteCommand(target, launcherExecutable string, command []string, flagsFile
 	}
 
 	configuration := launcherConfig{
-		Command:   slices.Concat(command, flags, extraFlags),
-		FlagsFile: flagsFile,
+		Command:         slices.Concat(command, flags, extraFlags),
+		FlagsFile:       flagsFile,
+		ChromiumProfile: profile,
 	}
 	if _, err := fileutil.WriteJSONIfChanged(
 		configPath(target),
@@ -225,7 +237,35 @@ func launcherCommand(
 	if err != nil {
 		return nil, err
 	}
+	if configuration.ChromiumProfile != "" {
+		// The fixed browser switches were checked when installed
+		_, after := chromiumflags.Split(configuration.Command[1:])
+		if after == nil {
+			if err := chromiumflags.CheckProfile(slices.Concat(flags, arguments), configuration.ChromiumProfile); err != nil {
+				return nil, err
+			}
+		}
+	}
 	return slices.Concat(configuration.Command, flags, arguments), nil
+}
+
+// CheckChromiumFlags checks installed browser flags and the current flags file
+func CheckChromiumFlags(flags []string, flagsFile, profile string) error {
+	if profile == "" {
+		return nil
+	}
+	if err := chromiumflags.CheckProfile(flags, profile); err != nil {
+		return err
+	}
+	_, after := chromiumflags.Split(flags)
+	if after != nil {
+		return nil
+	}
+	extra, err := readFlags(flagsFile, xdgdirs.Current().ConfigHome)
+	if err != nil {
+		return err
+	}
+	return chromiumflags.CheckProfile(extra, profile)
 }
 
 func readFlags(path, configHome string) ([]string, error) {

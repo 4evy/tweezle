@@ -30,7 +30,7 @@ launcher_name = "helium" # Match the executable inside your installed bundle
 # desktop_id = "helium"
 
 [browser.paths.linux]
-# For a non-default profile, also add its --profile-directory to browser.flags
+# Set profile_dir to the profile Tweezle should configure and launch
 profile_dir = "${config_home}/helium/Default"
 external_extension_dirs = ["${config_home}/helium/External Extensions"]
 

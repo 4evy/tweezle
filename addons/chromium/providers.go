@@ -3,8 +3,10 @@ package chromium
 import (
 	"errors"
 	"fmt"
-	"strings"
+	"slices"
 
+	"github.com/4evy/tweezle/addons/foundation/chrome/extensions"
+	"github.com/4evy/tweezle/internal/chromiumflags"
 	"github.com/4evy/tweezle/internal/reflectutil"
 )
 
@@ -29,10 +31,11 @@ func (config Config) validateProviders() error {
 func (config Config) validateExtensionLoading() error {
 	var supported *bool
 	for _, provider := range config.Providers {
-		if !reflectutil.IsNil(provider) && provider.Validate() == nil {
-			if capability := provider.Contributions().SupportsLoadExtension; capability != nil {
-				supported = capability
-			}
+		if reflectutil.IsNil(provider) || provider.Validate() != nil {
+			continue
+		}
+		if capability := provider.Contributions().SupportsLoadExtension; capability != nil {
+			supported = capability
 		}
 	}
 	if supported == nil || *supported {
@@ -43,15 +46,11 @@ func (config Config) validateExtensionLoading() error {
 			return errors.New(unsupportedExtensionRuntimeMessage)
 		}
 	}
-	unsupported := false
-	for _, extension := range config.Extensions.ZIP {
-		unsupported = unsupported || extension.LoadUnpacked
-	}
-	for _, extension := range config.Extensions.Git {
-		unsupported = unsupported || extension.LoadUnpacked
-	}
-	unsupported = unsupported || hasLoadExtensionFlag(config.Browser.Flags)
-	if unsupported {
+	if slices.ContainsFunc(config.Extensions.ZIP, func(extension extensions.ZIPExtension) bool {
+		return extension.LoadUnpacked
+	}) || slices.ContainsFunc(config.Extensions.Git, func(extension extensions.GitExtension) bool {
+		return extension.LoadUnpacked
+	}) || hasLoadExtensionFlag(config.Browser.Flags) {
 		return errors.New("this browser does not support --load-extension; use store or CRX installation, or load unpacked extensions manually in the browser")
 	}
 	return nil
@@ -61,17 +60,11 @@ func (config Config) validateExtensionLoading() error {
 // stops parsing switches at '--'
 // https://github.com/chromium/chromium/blob/main/base/command_line.cc
 func hasLoadExtensionFlag(flags []string) bool {
-	for _, flag := range flags {
-		flag = strings.Trim(flag, " \t\n\v\f\r")
-		if flag == "--" {
-			return false
-		}
-		name, _, _ := strings.Cut(flag, "=")
-		if name == "--load-extension" || name == "-load-extension" {
-			return true
-		}
-	}
-	return false
+	before, _ := chromiumflags.Split(flags)
+	return slices.ContainsFunc(before, func(arg string) bool {
+		name, _ := chromiumflags.Switch(arg)
+		return name == "load-extension"
+	})
 }
 
 func (config Config) policyNamespace() (string, error) {

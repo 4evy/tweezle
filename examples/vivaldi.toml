@@ -29,7 +29,7 @@ launcher_name = "vivaldi"
 # icon_name = "vivaldi.png"
 
 [browser.paths.linux]
-# For a non-default profile, also add its --profile-directory to browser.flags
+# Set profile_dir to the profile Tweezle should configure and launch
 profile_dir = "${config_home}/vivaldi/Default"
 external_extension_dirs = ["${config_home}/vivaldi/External Extensions"]
 

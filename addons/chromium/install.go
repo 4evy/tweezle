@@ -10,6 +10,7 @@ import (
 
 	"github.com/4evy/tweezle/addons/foundation/chrome/extensions"
 	"github.com/4evy/tweezle/addons/foundation/chrome/ublock"
+	"github.com/4evy/tweezle/internal/chromiumflags"
 	fileutil "github.com/4evy/tweezle/internal/file"
 	launcherpkg "github.com/4evy/tweezle/launcher"
 	"github.com/google/renameio/v2"
@@ -48,6 +49,7 @@ type InstallOptions struct {
 	LauncherExecutable string
 
 	extraLauncherFlags []string
+	profileSelectors   [2]string
 	launcherCommand    []string
 	extensionIDAliases map[string]string
 	liteManifestPath   string
@@ -72,8 +74,25 @@ func (browser Browser) Install(
 	ctx context.Context,
 	options InstallOptions,
 ) error {
+	profile := expandPathTemplate(options.ProfileDir)
+	if profile == "" {
+		profile = browser.Config.DefaultProfileDir(options.Mode)
+	}
+	var err error
+	options.ProfileDir, options.profileSelectors, err = chromiumflags.Profile(profile)
+	if err != nil {
+		return err
+	}
+	fixed := slices.Concat(browser.Config.Flags, options.Flags)
+	if options.Mode == ModeLinux {
+		before, after := chromiumflags.Split(fixed)
+		fixed = slices.Concat(before, browser.Config.Linux.WrapperFlags, after)
+	}
+	if err := launcherpkg.CheckChromiumFlags(fixed, browser.Config.FlagsFile, options.ProfileDir); err != nil {
+		return err
+	}
 	if browser.supportsLoadExtension != nil && !*browser.supportsLoadExtension &&
-		hasLoadExtensionFlag(slices.Concat(browser.Config.Flags, options.Flags)) {
+		hasLoadExtensionFlag(fixed) {
 		return errors.New("this browser does not support --load-extension; use store or CRX installation, or load unpacked extensions manually in the browser")
 	}
 	switch options.Mode {
@@ -136,9 +155,12 @@ func (browser Browser) configureApp(
 		)
 	}
 	configuredFlags = append(configuredFlags, options.Flags...)
-	browser.addLaunchContributions(
-		slices.Concat(configuredFlags, options.extraLauncherFlags),
-	)
+	configuredFlags, arguments := chromiumflags.Split(configuredFlags)
+	if options.ProfileDir != "" {
+		configuredFlags = slices.Insert(configuredFlags, 0, options.profileSelectors[:]...)
+	}
+	configuredFlags = slices.Concat(configuredFlags, options.extraLauncherFlags, arguments)
+	browser.addLaunchContributions(configuredFlags)
 	if err := browser.applyInstallSettings(ctx, options, launcher); err != nil {
 		return err
 	}
@@ -146,13 +168,13 @@ func (browser Browser) configureApp(
 	if len(command) == 0 {
 		command = []string{launcher}
 	}
-	if err := launcherpkg.WriteCommand(
+	if err := launcherpkg.WriteChromiumCommand(
 		filepath.Join(options.BinDir, browser.Config.ExecutableName),
 		options.LauncherExecutable,
 		command,
 		browser.Config.FlagsFile,
 		configuredFlags,
-		options.extraLauncherFlags,
+		options.ProfileDir,
 	); err != nil {
 		return err
 	}
@@ -252,18 +274,14 @@ func (browser Browser) applyInstallSettings(
 	if !options.ApplySettings {
 		return nil
 	}
-	profile := options.ProfileDir
-	if profile == "" {
-		profile = browser.Config.DefaultProfileDir(options.Mode)
-	}
-	if profile == "" {
+	if options.ProfileDir == "" {
 		return nil
 	}
 	return browser.ApplyProfileSettings(ctx, ApplyOptions{
 		BrowserExecutable:  launcher,
 		ExtensionRoot:      options.Root,
 		liteManifestPath:   options.liteManifestPath,
-		ProfileDir:         profile,
+		ProfileDir:         options.ProfileDir,
 		Settings:           options.Settings,
 		SettingsSource:     options.SettingsSource,
 		ExtensionIDAliases: options.extensionIDAliases,

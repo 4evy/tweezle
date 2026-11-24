@@ -25,7 +25,7 @@ app_dir = "/usr/bin"
 launcher_name = "chromium"
 
 [browser.paths.linux]
-# For a non-default profile, also add its --profile-directory to browser.flags
+# Set profile_dir to the profile Tweezle should configure and launch
 profile_dir = "${config_home}/chromium/Default"
 external_extension_dirs = ["${config_home}/chromium/External Extensions"]
 
