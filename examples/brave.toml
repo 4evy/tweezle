@@ -15,6 +15,8 @@
 # Install the rendered policy in Brave's platform managed policy store for
 # controls that require it; apply does not install managed policies
 # Wallet and Rewards require managed policy to be fully disabled
+# On NixOS, Brave policy is installed under /etc/brave/policies/managed
+# Nix also stages the Brave JSON at tweezle/brave-managed-policy.json
 
 # --- 1. Browser and platform paths --------------------------------------------
 

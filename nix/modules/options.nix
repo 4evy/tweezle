@@ -59,6 +59,8 @@ let
       "chrome"
     else if (chromium.edge or null) != null then
       "edge"
+    else if (chromium.brave or null) != null then
+      "brave"
     else
       "chromium"
   ) (builtins.attrNames policyConfigurations);
@@ -242,9 +244,10 @@ in
       type = types.attrsOf types.pathInStore;
       readOnly = true;
       description = ''
-        Generated managed-policy JSON keyed by policy store: `chrome`, `edge`,
-        `chromium` for other Chromium providers, and `firefox`. Different
-        products are rendered separately even when they share JSON syntax.
+        Generated managed-policy JSON keyed by policy store: `brave`,
+        `chrome`, `edge`, `chromium` for other Chromium providers, and
+        `firefox`. Different products are rendered separately even when
+        they share JSON syntax.
         Conflicts within a store are rejected.
       '';
     };

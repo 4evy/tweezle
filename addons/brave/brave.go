@@ -11,4 +11,5 @@ func Addon() chromium.ProviderAddon {
 	return chromium.NewProviderAddon[Config]("brave")
 }
 
-func (Config) PolicyNamespace() string { return "chromium" }
+// PolicyNamespace keeps Brave policies separate from generic Chromium policies
+func (Config) PolicyNamespace() string { return "brave" }
