@@ -105,11 +105,8 @@ func (config Config) Validate() error {
 			if address == "" {
 				continue
 			}
-			parsed, err := url.Parse(address)
-			if err != nil || parsed == nil || (parsed.Scheme != "https" && parsed.Scheme != "file") ||
-				(parsed.Scheme == "https" && parsed.Host == "") ||
-				(parsed.Scheme == "file" && (parsed.Host != "" || !strings.HasPrefix(parsed.Path, "/"))) {
-				errs = append(errs, fmt.Errorf("firefox extension %q %s must be an HTTPS or absolute file URL", extension.ID, name))
+			if _, err := extensionFilePath(address); err != nil {
+				errs = append(errs, fmt.Errorf("firefox extension %q %s: %w", extension.ID, name, err))
 			}
 		}
 	}
@@ -122,6 +119,25 @@ func (config Config) Validate() error {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
+}
+
+// Return the decoded path of a local file URL, or an empty path for HTTPS
+func extensionFilePath(address string) (string, error) {
+	parsed, err := url.Parse(address)
+	if err == nil {
+		switch parsed.Scheme {
+		case "https":
+			if parsed.Host != "" {
+				return "", nil
+			}
+		case "file":
+			if parsed.User == nil && (parsed.Host == "" || strings.EqualFold(parsed.Host, "localhost")) &&
+				filepath.IsAbs(parsed.Path) && !strings.ContainsRune(parsed.Path, 0) {
+				return parsed.Path, nil
+			}
+		}
+	}
+	return "", errors.New("must be an HTTPS or absolute file URL")
 }
 
 func expandPath(path string) string {

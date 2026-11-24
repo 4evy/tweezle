@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -80,12 +79,15 @@ func (module Module) install(ctx context.Context, options tweezle.InstallOptions
 		var readOnly []string
 		for _, extension := range config.Extensions {
 			for _, address := range []string{extension.InstallURL, extension.UpdateURL} {
-				if strings.HasPrefix(address, "file://") {
-					parsed, err := url.Parse(address)
-					if err != nil {
-						return err
-					}
-					readOnly = append(readOnly, filepath.Dir(parsed.Path))
+				if address == "" {
+					continue
+				}
+				path, err := extensionFilePath(address)
+				if err != nil {
+					return fmt.Errorf("firefox extension %q: %w", extension.ID, err)
+				}
+				if path != "" {
+					readOnly = append(readOnly, filepath.Dir(path))
 				}
 			}
 		}
