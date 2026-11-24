@@ -36,7 +36,7 @@ forks such as Brave, Helium, and Zen.
 
 ## Install
 
-From a checkout, use Go 1.27.1 or newer, or Nix with flakes enabled:
+From a checkout, use Go 1.27.3 or newer, or Nix with flakes enabled:
 
 ```sh
 go install ./cmd/tweezle
