@@ -211,6 +211,18 @@ func (config LiteConfig) Settings() (LiteSettings, error) {
 			target.Field(index).Set(inline.Field(index))
 		}
 	}
+	for setting, set := range map[string]bool{
+		"showBlockedCount": settings.ShowBlockedCount != nil,
+		"strictBlockMode":  settings.StrictBlockMode != nil,
+		"popupBlockMode":   settings.PopupBlockMode != nil,
+		"rulesets":         settings.Rulesets != nil,
+		"defaultFiltering": settings.FilteringModes != nil,
+		"noFiltering":      settings.FilteringModes != nil,
+	} {
+		if _, managed := config.Managed[setting]; set && managed {
+			return settings, fmt.Errorf("%s cannot be both editable and managed", setting)
+		}
+	}
 	return settings, settings.Validate()
 }
 
@@ -268,7 +280,7 @@ func overlay(defaults, overrides map[string]any) map[string]any {
 
 func (config Config) AddExtensions(catalog extensions.Catalog) extensions.Catalog {
 	catalog.ZIP = slices.Clone(catalog.ZIP)
-	catalog.ChromeStore = slices.Clone(catalog.ChromeStore)
+	catalog.UpdateURL = slices.Clone(catalog.UpdateURL)
 	if config.Origin != nil && config.Origin.ShouldInstall() {
 		catalog.ZIP = append(catalog.ZIP, extensions.ZIPExtension{
 			ID: OriginID, Name: "uBlock Origin", UpdatePolicy: extensions.UpdatePolicyLatest,
@@ -280,7 +292,10 @@ func (config Config) AddExtensions(catalog extensions.Catalog) extensions.Catalo
 		if catalog.ChromeStoreUpdateURL == "" {
 			catalog.ChromeStoreUpdateURL = StoreUpdateURL
 		}
-		catalog.ChromeStore = append(catalog.ChromeStore, extensions.ChromeStoreExtension{ID: LiteID, Name: "uBlock Origin Lite"})
+		catalog.UpdateURL = append(catalog.UpdateURL, extensions.UpdateURLExtension{
+			ExtensionIdentity: extensions.ExtensionIdentity{ID: LiteID, Name: "uBlock Origin Lite"},
+			UpdateURL:         catalog.ChromeStoreUpdateURL,
+		})
 	}
 	return catalog
 }
@@ -326,6 +341,17 @@ func (config LiteConfig) StorageSource(manifestPath string) (storage.SettingsSou
 	if err != nil {
 		return storage.SettingsSource{}, err
 	}
+	manifest := liteManifest{}
+	if settings.Rulesets != nil {
+		manifest, err = loadLiteManifest(manifestPath)
+		if err != nil {
+			return storage.SettingsSource{}, err
+		}
+	}
+	return config.storageSource(settings, manifest, nil)
+}
+
+func (config LiteConfig) storageSource(settings LiteSettings, manifest liteManifest, nativeDefaults []string) (storage.SettingsSource, error) {
 	values := map[string]any{}
 	for key, value := range map[string]*bool{
 		"autoReload": settings.AutoReload, "showBlockedCount": settings.ShowBlockedCount,
@@ -337,10 +363,8 @@ func (config LiteConfig) StorageSource(manifestPath string) (storage.SettingsSou
 		}
 	}
 	if settings.Rulesets != nil {
-		manifest, err := loadLiteManifest(manifestPath)
-		if err != nil {
-			return storage.SettingsSource{}, err
-		}
+		// Standalone manifest compilation can only see stock defaults.
+		// Profile application passes defaults selected natively for its locale
 		available := map[string]bool{}
 		defaults := []string{}
 		for _, ruleset := range manifest.Rules.Resources {
@@ -349,10 +373,18 @@ func (config LiteConfig) StorageSource(manifestPath string) (storage.SettingsSou
 				defaults = append(defaults, ruleset.ID)
 			}
 		}
+		if nativeDefaults != nil {
+			defaults = nativeDefaults
+		}
 		selected := []string{}
 		for _, id := range settings.Rulesets {
 			if id == "default" && !available[id] {
-				selected = append(selected, defaults...)
+				for _, fallback := range defaults {
+					if !available[fallback] {
+						return storage.SettingsSource{}, fmt.Errorf("native default ruleset %q is absent from installed Lite version %s", fallback, manifest.Version)
+					}
+					selected = append(selected, fallback)
+				}
 				continue
 			}
 			if !available[id] {
@@ -360,17 +392,14 @@ func (config LiteConfig) StorageSource(manifestPath string) (storage.SettingsSou
 			}
 			selected = append(selected, id)
 		}
-		values["enabledRulesets"] = selected
-		// Prevent first-run/version initialization from adding defaults over the
-		// explicit selection. Future extension upgrades retain their migrations
-		values["version"] = manifest.Version
-		values["defaultRulesetIds"] = defaults
+		seen := make(map[string]bool, len(selected))
+		values["enabledRulesets"] = slices.DeleteFunc(selected, func(id string) bool {
+			duplicate := seen[id]
+			seen[id] = true
+			return duplicate
+		})
 	}
 	document := storage.Settings{}
-	if defaults, ok := values["defaultRulesetIds"]; ok {
-		document.Local = append(document.Local, storage.Entry{ID: config.InstalledID(), Values: map[string]any{"defaultRulesetIds": defaults}})
-		delete(values, "defaultRulesetIds")
-	}
 	if len(values) > 0 {
 		data, err := json.Marshal(values)
 		if err != nil {
@@ -432,7 +461,7 @@ type liteManifest struct {
 
 func loadLiteManifest(path string) (manifest liteManifest, err error) {
 	if path == "" {
-		return manifest, errors.New("uBlock Origin Lite rulesets require an installed manifest; run tweezle apply first or install Lite in this profile")
+		return manifest, errors.New("uBlock Origin Lite rulesets require an installed manifest")
 	}
 	var reader io.ReadCloser
 	if filepath.Ext(path) == ".crx" {

@@ -10,7 +10,6 @@ import (
 
 	foundation "github.com/4evy/tweezle/addons/foundation/chrome"
 	"github.com/4evy/tweezle/addons/foundation/chrome/extensions"
-	"github.com/4evy/tweezle/addons/foundation/chrome/ublock"
 	"github.com/4evy/tweezle/internal/chromiumflags"
 	fileutil "github.com/4evy/tweezle/internal/file"
 	launcherpkg "github.com/4evy/tweezle/launcher"
@@ -54,7 +53,6 @@ type InstallOptions struct {
 	preparedSites      []foundation.PreparedSite
 	launcherCommand    []string
 	extensionIDAliases map[string]string
-	liteManifestPath   string
 }
 
 func Configure(ctx context.Context, options ConfigureOptions) error {
@@ -246,7 +244,6 @@ func (browser Browser) installExtensions(
 		options.extraLauncherFlags,
 		loadFlags...)
 	options.extensionIDAliases = result.ExtensionIDAliases
-	options.liteManifestPath = result.CRXPaths[ublock.LiteID]
 	return nil
 }
 
@@ -287,7 +284,6 @@ func (browser Browser) applyInstallSettings(
 	return browser.applyPreparedProfileSettings(ctx, ApplyOptions{
 		BrowserExecutable:  launcher,
 		ExtensionRoot:      options.Root,
-		liteManifestPath:   options.liteManifestPath,
 		ProfileDir:         options.ProfileDir,
 		Settings:           options.Settings,
 		SettingsSource:     options.SettingsSource,

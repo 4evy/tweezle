@@ -20,7 +20,6 @@ type (
 )
 
 type ApplyOptions struct {
-	liteManifestPath   string
 	BrowserExecutable  string
 	ExtensionRoot      string
 	ProfileDir         string

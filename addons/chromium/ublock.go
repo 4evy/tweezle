@@ -1,19 +1,16 @@
 package chromium
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/4evy/tweezle/addons/foundation/chrome/ublock"
 	"github.com/4evy/tweezle/internal/reflectutil"
-	xdgdirs "github.com/4evy/tweezle/internal/xdg"
 )
 
 // useBundledUBlock selects a provider's component before validating or adding
@@ -86,34 +83,19 @@ func (browser Browser) uBlockStorageSources(options ApplyOptions) ([]SettingsSou
 	if browser.UBlock.Lite == nil {
 		return nil, nil
 	}
-	manifest := options.liteManifestPath
-	if manifest == "" {
-		id := browser.UBlock.Lite.InstalledID()
-		if alias := options.ExtensionIDAliases[id]; alias != "" {
-			id = alias
-		}
-		paths, err := filepath.Glob(filepath.Join(options.ProfileDir, "Extensions", id, "*", "manifest.json"))
-		if err != nil {
-			return nil, err
-		}
-		if len(paths) == 0 {
-			root := options.ExtensionRoot
-			if root == "" {
-				root = filepath.Join(xdgdirs.Current().DataHome, "tweezle", browser.Config.ExecutableName)
-			}
-			paths, err = filepath.Glob(filepath.Join(root, "extensions", "crx", id+"-*.crx"))
-			if err != nil {
-				return nil, err
-			}
-		}
-		slices.SortFunc(paths, compareExtensionPaths)
-		if len(paths) > 0 {
-			manifest = paths[len(paths)-1]
-		}
+	if err := browser.ensureProfileNotRunning(options.ProfileDir); err != nil {
+		return nil, err
 	}
-	source, err := browser.UBlock.Lite.StorageSource(manifest)
+	id := browser.UBlock.Lite.InstalledID()
+	if alias := options.ExtensionIDAliases[id]; alias != "" {
+		id = alias
+	}
+	source, err := browser.UBlock.Lite.ProfileStorageSource(options.ProfileDir, id)
 	if err != nil {
 		return nil, err
+	}
+	if source.Data == nil {
+		return nil, nil
 	}
 	return []SettingsSource{source}, nil
 }
@@ -203,22 +185,4 @@ func (config Config) validateUBlockCapability() error {
 		return errors.New("browser does not support Manifest V2 required by uBlock Origin; use [ublock.lite] (Manifest V3) instead")
 	}
 	return nil
-}
-
-func compareExtensionPaths(a, b string) int {
-	version := func(path string) []int {
-		name := filepath.Base(filepath.Dir(path))
-		if filepath.Ext(path) == ".crx" {
-			name = strings.TrimSuffix(filepath.Base(path), ".crx")
-			_, name, _ = strings.Cut(name, "-")
-		}
-		name = strings.TrimSuffix(name, "_0")
-		parts := strings.Split(name, ".")
-		result := make([]int, len(parts))
-		for i, part := range parts {
-			result[i], _ = strconv.Atoi(part)
-		}
-		return result
-	}
-	return slices.CompareFunc(version(a), version(b), cmp.Compare[int])
 }

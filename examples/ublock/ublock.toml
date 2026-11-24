@@ -25,6 +25,8 @@ settings_file = "origin.json"
 
 # For Manifest V3, replace ublock.origin above with this Lite recipe
 # Lite installs from the Chrome Web Store and uses external_extension_dirs
+# Install using tweezle apply --no-profile, then launch the browser once
+# Close it and run tweezle profile apply. Or use managed policy at install time
 # [ublock.lite]
 # settings_file = "lite.json"
 
