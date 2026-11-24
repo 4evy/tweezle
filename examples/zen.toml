@@ -15,11 +15,10 @@ profile_dir = "${home}/Library/Application Support/zen/Profiles/your-profile"
 "zen.workspaces.separate-essentials" = true
 "zen.theme.dark-mode-bias" = 0.3
 
-# Open Zen once before using its native shortcut and workspace files
-# These shortcuts require the version 21 format shipped by Zen 1.23.1b
+# Native CustomKeys entry in current Zen. Use an empty table to clear a binding
 [firefox.zen.shortcuts."zen-compact-mode-toggle"]
-key = "c"
-modifiers = { accel = true, alt = true, shift = false }
+key = "C"
+modifiers = "accel,alt"
 
 # Enable an official store Mod, pinning its manifest and store-hosted assets
 # Unlisted Mods survive; enabled = false disables an installed Mod

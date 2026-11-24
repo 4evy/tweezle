@@ -2,6 +2,7 @@
 
 let
   metadata = lib.trivial.importJSON ../metadata.json;
+  schemas = lib.trivial.importJSON ../schemas.json;
   catalog = import ../../firefox/nix/catalog.nix { inherit lib schema; };
   inherit (schema)
     types
@@ -12,16 +13,11 @@ let
 in
 {
   preferences = catalog.preferences metadata;
-  shortcuts = schema.optional (types.attrsOf (
-    schema.freeformSubmodule {
-      key = optionalString "Character key; clears the existing keycode when nonempty.";
-      keycode = optionalString "Gecko virtual key code; clears the existing character key when nonempty.";
-      disabled = optionalBool "Disable this existing shortcut.";
-      modifiers = optionalSubmodule (lib.attrsets.genAttrs [ "control" "alt" "shift" "meta" "accel" ] (
-        _: optionalBool "Native shortcut modifier."
-      )) "Modifier changes; omitted modifiers survive.";
-    }
-  )) "Patches keyed by existing shortcut ID; requires initialized version 21 shortcuts.";
+  shortcuts = schema.optional (types.attrsOf (catalog.fromSchema schemas.shortcut)) ''
+    Bindings in customKeys.json keyed by native shortcut ID. Set one of key
+    or keycode and optional comma-separated modifiers. An empty table clears
+    the binding.
+  '';
   mods = schema.optional (types.attrsOf (
     schema.freeformSubmodule {
       enabled = optionalBool "Enable this Mod; defaults to the installed value or enabled for a new Mod.";

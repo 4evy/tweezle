@@ -2,6 +2,7 @@
 package zen
 
 import (
+	"bytes"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -9,12 +10,22 @@ import (
 
 	"github.com/4evy/tweezle/addons/firefox"
 	"github.com/4evy/tweezle/addons/foundation/firefox/settings"
+	jsonutil "github.com/4evy/tweezle/internal/json"
 )
 
 //go:embed metadata.json
 var embeddedMetadata []byte
-var uuid = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 var catalog = settings.LoadCompiled(embeddedMetadata)
+
+// schemas.json describes native shortcut and workspace patch fields
+//
+//go:embed schemas.json
+var embeddedSchemas []byte
+
+var (
+	shortcutSchema, workspaceSchema = loadSchemas()
+	uuid                            = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+)
 
 func validWorkspaceID(id string) bool {
 	if len(id) == 38 && id[0] == '{' && id[len(id)-1] == '}' {
@@ -43,13 +54,19 @@ func Metadata() settings.Catalog   { return settings.Load(embeddedMetadata) }
 func (config Config) Validate() error {
 	var errs []error
 	errs = append(errs, catalog.Validate(config.Preferences))
+	shortcutNames := make(map[string]string, len(config.Shortcuts))
 	for id, patch := range config.Shortcuts {
 		if id == "" {
 			errs = append(errs, errors.New("shortcut ID must not be empty"))
 		}
 		errs = append(errs, shortcutSchema.Validate(patch, "shortcuts."+id))
-		if key, ok := patch["key"].(string); ok && key != "" {
-			if keycode, ok := patch["keycode"].(string); ok && keycode != "" {
+		native := shortcutID(id)
+		if previous, duplicate := shortcutNames[native]; duplicate {
+			errs = append(errs, fmt.Errorf("shortcut IDs %q and %q target %q", previous, id, native))
+		}
+		shortcutNames[native] = id
+		if _, key := patch["key"]; key {
+			if _, keycode := patch["keycode"]; keycode {
 				errs = append(errs, fmt.Errorf("shortcut %s cannot set both key and keycode", id))
 			}
 		}
@@ -126,17 +143,21 @@ func (config Config) Prepare(profile firefox.Profile) (firefox.Contribution, err
 	return contribution, nil
 }
 
-var shortcutSchema = settings.Schema{"type": "object", "additionalProperties": false, "properties": settings.Schema{
-	"key": settings.Schema{"type": "string"}, "keycode": settings.Schema{"type": "string"}, "disabled": settings.Schema{"type": "boolean"},
-	"modifiers": settings.Schema{"type": "object", "additionalProperties": false, "properties": settings.Schema{
-		"control": settings.Schema{"type": "boolean"}, "alt": settings.Schema{"type": "boolean"}, "shift": settings.Schema{"type": "boolean"}, "meta": settings.Schema{"type": "boolean"}, "accel": settings.Schema{"type": "boolean"},
-	}},
-}}
-var workspaceSchema = settings.Schema{"type": "object", "additionalProperties": false, "properties": settings.Schema{
-	"name": settings.Schema{"type": "string"}, "icon": settings.Schema{"type": []string{"string", "null"}}, "containerTabId": settings.Schema{"type": "integer", "minimum": 0, "maximum": 2147483647},
-	"theme": settings.Schema{"type": []string{"object", "null"}, "additionalProperties": false, "properties": settings.Schema{
-		"type": settings.Schema{"type": "string", "enum": []string{"gradient"}}, "gradientColors": settings.Schema{"type": "array", "items": settings.Schema{"type": "object", "additionalProperties": false, "properties": settings.Schema{
-			"c": settings.Schema{"anyOf": []settings.Schema{{"type": "string"}, {"type": "array", "items": settings.Schema{"type": "number"}}}}, "isCustom": settings.Schema{"type": "boolean"}, "algorithm": settings.Schema{"type": "string"}, "isPrimary": settings.Schema{"type": "boolean"}, "lightness": settings.Schema{"type": "number"}, "position": settings.Schema{"type": []string{"object", "null"}, "additionalProperties": false, "properties": settings.Schema{"x": settings.Schema{"type": "number"}, "y": settings.Schema{"type": "number"}}}, "type": settings.Schema{"type": "string"},
-		}}}, "opacity": settings.Schema{"type": "number", "minimum": 0, "maximum": 1}, "texture": settings.Schema{"type": "number", "minimum": 0, "maximum": 1}, "rotation": settings.Schema{"type": "number"},
-	}},
-}}
+func loadSchemas() (*settings.CompiledSchema, *settings.CompiledSchema) {
+	schemas, err := jsonutil.Strict.Decode[struct {
+		Shortcut  settings.Schema `json:"shortcut"`
+		Workspace settings.Schema `json:"workspace"`
+	}](bytes.NewReader(embeddedSchemas))
+	if err != nil {
+		panic(fmt.Errorf("decode Zen schemas: %w", err))
+	}
+	shortcut, err := schemas.Shortcut.Compile()
+	if err != nil {
+		panic(fmt.Errorf("compile Zen shortcut schema: %w", err))
+	}
+	workspace, err := schemas.Workspace.Compile()
+	if err != nil {
+		panic(fmt.Errorf("compile Zen workspace schema: %w", err))
+	}
+	return shortcut, workspace
+}

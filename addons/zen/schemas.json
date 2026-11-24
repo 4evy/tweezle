@@ -1,0 +1,62 @@
+{
+  "shortcut": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "key": { "type": "string", "minLength": 1 },
+      "keycode": { "type": "string", "minLength": 1 },
+      "modifiers": { "type": "string" }
+    }
+  },
+  "workspace": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "name": { "type": "string" },
+      "icon": { "type": ["string", "null"] },
+      "containerTabId": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647
+      },
+      "theme": {
+        "type": ["object", "null"],
+        "additionalProperties": false,
+        "properties": {
+          "type": { "type": "string", "enum": ["gradient"] },
+          "gradientColors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "c": {
+                  "anyOf": [
+                    { "type": "string" },
+                    { "type": "array", "items": { "type": "number" } }
+                  ]
+                },
+                "isCustom": { "type": "boolean" },
+                "algorithm": { "type": "string" },
+                "isPrimary": { "type": "boolean" },
+                "lightness": { "type": "number" },
+                "position": {
+                  "type": ["object", "null"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "x": { "type": "number" },
+                    "y": { "type": "number" }
+                  }
+                },
+                "type": { "type": "string" }
+              }
+            }
+          },
+          "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+          "texture": { "type": "number", "minimum": 0, "maximum": 1 },
+          "rotation": { "type": "number" }
+        }
+      }
+    }
+  }
+}
