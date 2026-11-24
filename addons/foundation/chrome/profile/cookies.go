@@ -5,7 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/netip"
+	"strconv"
 	"strings"
+
+	"golang.org/x/net/idna"
 )
 
 const (
@@ -90,13 +94,13 @@ func (config CookiePolicy) Validate() error {
 	for _, rule := range config.exceptionRules() {
 		setting, patterns := string(rule.setting), rule.patterns
 		for index, pattern := range patterns {
-			canonical := canonicalCookiePattern(pattern)
-			if canonical == "" {
-				errs = append(errs, fmt.Errorf(
-					"browser.preferences.cookies.%s[%d] must not be empty",
-					setting,
-					index,
-				))
+			if strings.TrimSpace(pattern) == "" {
+				errs = append(errs, fmt.Errorf("browser.preferences.cookies.%s[%d] must not be empty", setting, index))
+				continue
+			}
+			canonical, err := canonicalCookiePattern(pattern)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("browser.preferences.cookies.%s[%d]: %w", setting, index, err))
 				continue
 			}
 			if previous, exists := seen[canonical]; exists && previous != setting {
@@ -138,6 +142,9 @@ func SetCookieAllowlist(preferences map[string]any, patterns []string) error {
 // A non-nil list owns exceptions with that setting, including when the list is
 // empty and therefore removes existing exceptions of that setting.
 func SetCookiePolicy(preferences map[string]any, policy CookiePolicy) error {
+	if err := policy.Validate(); err != nil {
+		return err
+	}
 	if policy.Default != "" {
 		if err := SetNestedValue(
 			preferences,
@@ -185,17 +192,27 @@ func setThirdPartyCookiePolicy(
 func setCookieExceptions(preferences map[string]any, patterns []string, setting int) error {
 	configured := map[string]struct{}{}
 	for _, pattern := range patterns {
-		pattern = canonicalCookiePattern(pattern)
-		if pattern != "" {
-			configured[pattern] = struct{}{}
+		canonical, err := canonicalCookiePattern(pattern)
+		if err != nil {
+			return err
 		}
+		configured[canonical] = struct{}{}
 	}
 	exceptions, err := NestedObject(preferences, cookieExceptionsPreference)
 	if err != nil {
 		return fmt.Errorf("open cookie exceptions: %w", err)
 	}
+	// Chromium drops noncanonical twins on load. Remove them here even if
+	// they hold a different setting than the rule replacing them
 	maps.DeleteFunc(exceptions, func(pattern string, entry any) bool {
 		_, managed := configured[pattern]
+		if !managed {
+			if canonical, err := canonicalCookiePattern(pattern); err == nil {
+				if _, replaced := configured[canonical]; replaced {
+					return true
+				}
+			}
+		}
 		return !managed && isCookieException(entry, setting)
 	})
 	for pattern := range configured {
@@ -209,12 +226,87 @@ func setCookieExceptions(preferences map[string]any, patterns []string, setting 
 	return nil
 }
 
-func canonicalCookiePattern(pattern string) string {
-	pattern = strings.TrimSpace(pattern)
-	if pattern == "" || strings.Contains(pattern, ",") {
-		return pattern
+func canonicalCookiePattern(pattern string) (string, error) {
+	primary, secondary, pair := strings.Cut(strings.TrimSpace(pattern), ",")
+	first, err := canonicalCookieEndpoint(strings.TrimSpace(primary))
+	if err != nil {
+		return "", fmt.Errorf("invalid cookie pattern %q: %w", pattern, err)
 	}
-	return pattern + cookiePatternWildcard
+	if !pair {
+		return first + cookiePatternWildcard, nil
+	}
+	second, err := canonicalCookieEndpoint(strings.TrimSpace(secondary))
+	if err != nil {
+		return "", fmt.Errorf("invalid cookie pattern %q: %w", pattern, err)
+	}
+	return first + "," + second, nil
+}
+
+// Chromium serializes wildcard schemes and ports by omitting them. Accept the
+// web subset of ContentSettingsPattern and reject other schemes and URL paths
+func canonicalCookieEndpoint(pattern string) (string, error) {
+	if pattern == "" {
+		return "", errors.New("pattern must not be empty")
+	}
+	scheme, authority, explicit := strings.Cut(pattern, "://")
+	if explicit {
+		scheme = strings.ToLower(scheme)
+		if scheme != "*" && scheme != "http" && scheme != "https" {
+			return "", errors.New("pattern scheme must be http, https, or *")
+		}
+	} else {
+		scheme, authority = "*", pattern
+	}
+	authority = strings.TrimSuffix(strings.TrimSuffix(authority, "/*"), "/")
+	if strings.ContainsAny(authority, "/?#@\\%,") {
+		return "", errors.New("patterns cannot contain URL paths, queries, or credentials")
+	}
+	host, port, hasPort := authority, "", false
+	wildcard := strings.HasPrefix(host, "[*.]")
+	if wildcard {
+		host = strings.TrimPrefix(host, "[*.]")
+	}
+	if strings.HasPrefix(host, "[") {
+		address, rest, ok := strings.Cut(host[1:], "]")
+		ip, err := netip.ParseAddr(address)
+		if !ok || wildcard || err != nil || !ip.Is6() || ip.Zone() != "" || (rest != "" && !strings.HasPrefix(rest, ":")) {
+			return "", errors.New("invalid IPv6 host pattern")
+		}
+		host = "[" + ip.String() + "]"
+		port, hasPort = strings.CutPrefix(rest, ":")
+	} else {
+		host, port, hasPort = strings.Cut(host, ":")
+		switch ip, err := netip.ParseAddr(host); {
+		case err == nil:
+			if wildcard {
+				return "", errors.New("domain wildcards cannot match an IP address")
+			}
+			host = ip.String()
+		case host == "*" && !wildcard:
+		default:
+			host, err = idna.Lookup.ToASCII(host)
+			host = strings.TrimRight(host, ".")
+			last := host[strings.LastIndexByte(host, '.')+1:]
+			_, numberErr := strconv.ParseUint(last, 10, 32)
+			if err != nil || host == "" || strings.HasPrefix(host, ".") || strings.Contains(host, "..") || numberErr == nil || strings.HasPrefix(last, "0x") {
+				return "", errors.New("invalid domain or noncanonical IPv4 address")
+			}
+		}
+	}
+	if wildcard {
+		host = "[*.]" + host
+	}
+	if hasPort && port != "*" {
+		n, err := strconv.ParseUint(port, 10, 16)
+		if err != nil || strconv.FormatUint(n, 10) != port {
+			return "", errors.New("port must be * or a decimal port without leading zeros")
+		}
+		host += ":" + port
+	}
+	if scheme != "*" {
+		host = scheme + "://" + host
+	}
+	return host, nil
 }
 
 func isCookieException(entry any, setting int) bool {

@@ -183,6 +183,9 @@ func (browser Browser) ApplyProfileSettings(
 	if err := browser.ensureProfileNotRunning(options.ProfileDir); err != nil {
 		return err
 	}
+	if err := (profile.CookiePolicy{Allow: options.Input.CookieAllowlist}).Validate(); err != nil {
+		return err
+	}
 	err := browser.ApplyExtensionSettings(ctx, options)
 	if err != nil {
 		if isStorageTemporarilyUnavailable(err) {
