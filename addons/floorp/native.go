@@ -18,7 +18,7 @@ const workspaceStorePreference = "floorp.workspaces.v4.store"
 // Floorp's runtime serializes its Map as [ID, workspace] pairs, despite the
 // record type in utils/type.ts. Convert to an object while merging our keyed
 // configuration, then restore the native representation before writing
-// https://github.com/Floorp-Projects/Floorp/blob/013bb6c9ed19250592898ec8fbc8d7d24aa847be/browser-features/chrome/common/workspaces/data/data.ts
+// https://github.com/Floorp-Projects/Floorp/blob/9e6b24e5fd561250ab04a011b70ee0b1280b1adc/browser-features/chrome/common/workspaces/data/data.ts
 func workspaceProfile(profile firefox.Profile) (firefox.Profile, error) {
 	raw, present := profile.Preferences[workspaceStorePreference]
 	if !present {
