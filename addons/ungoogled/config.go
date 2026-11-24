@@ -72,9 +72,8 @@ const (
 type ScrollTabs string
 
 const (
-	ScrollTabsAlways            ScrollTabs = "always"
-	ScrollTabsNever             ScrollTabs = "never"
-	ScrollTabsIncognitoAndGuest ScrollTabs = "incognito-and-guest"
+	ScrollTabsAlways ScrollTabs = "always"
+	ScrollTabsNever  ScrollTabs = "never"
 )
 
 type ShowAvatarButton string
@@ -121,7 +120,7 @@ func (config Config) choices() []choice {
 		},
 		{
 			"scroll_tabs", "scroll-tabs", string(config.ScrollTabs),
-			[]string{string(ScrollTabsAlways), string(ScrollTabsNever), string(ScrollTabsIncognitoAndGuest)},
+			[]string{string(ScrollTabsAlways), string(ScrollTabsNever)},
 		},
 		{
 			"show_avatar_button", "show-avatar-button",

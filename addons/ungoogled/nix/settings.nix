@@ -52,7 +52,6 @@ in
   scroll_tabs = optional (types.enum [
     "always"
     "never"
-    "incognito-and-guest"
   ]) "Choose when scrolling over the tabstrip switches tabs.";
   show_avatar_button = optional (types.enum [
     "always"
