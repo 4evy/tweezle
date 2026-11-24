@@ -97,10 +97,10 @@ external_extension_dirs = [
 # path = "example.local_state_preference"
 # value = 3
 
-# Variations is also shared; its paths are literal top-level keys
+# Variations is the shared clean-exit beacon, not the experiment seed store
 # [[browser.preferences.variation_values]]
-# path = "example_variation"
-# value = "enabled"
+# path = "variations_crash_streak"
+# value = 0
 
 # --- 4. Extension sources -----------------------------------------------------
 

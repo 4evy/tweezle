@@ -105,7 +105,39 @@ func (config Defaults) PatchLocalState(localState map[string]any) error {
 	)
 }
 
+// ValidateVariations limits profile config to Chromium's clean-exit beacon.
+// Experiment seed configuration does not live in this file
+func (config Defaults) ValidateVariations() error {
+	for _, entry := range config.VariationValues {
+		switch entry.Path {
+		case "user_experience_metrics.stability.exited_cleanly":
+			if _, ok := entry.Value.(bool); ok {
+				continue
+			}
+			return fmt.Errorf("browser.preferences.variation_values %q requires a boolean", entry.Path)
+		case "variations_crash_streak":
+			switch value := entry.Value.(type) {
+			case int:
+				if value >= 0 && value <= 1<<31-1 {
+					continue
+				}
+			case int64:
+				if value >= 0 && value <= 1<<31-1 {
+					continue
+				}
+			}
+			return fmt.Errorf("browser.preferences.variation_values %q requires a nonnegative Chromium integer", entry.Path)
+		default:
+			return fmt.Errorf("unknown Chromium Variations beacon key %q", entry.Path)
+		}
+	}
+	return nil
+}
+
 func (config Defaults) PatchVariations(variations map[string]any) error {
+	if err := config.ValidateVariations(); err != nil {
+		return err
+	}
 	for _, value := range config.VariationValues {
 		variations[value.Path] = value.Value
 	}

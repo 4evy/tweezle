@@ -29,7 +29,9 @@ in
     Values written to Chromium Local State.
   '';
   variation_values = optional (types.listOf preferenceValue) ''
-    Values written to Chromium Variations.
+    Chromium clean-exit beacon values. Only
+    `user_experience_metrics.stability.exited_cleanly` (boolean) and
+    `variations_crash_streak` (integer) are supported.
   '';
   accelerators = optional (types.listOf accelerator) ''
     Custom accelerator entries added to Preferences.

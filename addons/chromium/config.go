@@ -119,6 +119,7 @@ func (config Config) Validate() error {
 		config.validateUBlockCapability(),
 		config.validateExtensionLoading(),
 		config.Browser.Preferences.Cookies.Validate(),
+		config.Browser.Preferences.ValidateVariations(),
 		sites.Validate(config.Browser.Sites),
 		extensions.ValidateIDAliases(config.Browser.ExtensionIDAliases),
 		validateUniquePaths(
