@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/BrowserWorks/waterfox",
-  "revision": "2d41ff1cb71bd286cd2665580d5f83be824e7f61",
+  "revision": "4416ccc3421edf75265e987fa8e693a2639322c4",
   "preferences": {
     "app.support.baseURL": {
       "type": "string",
@@ -70,8 +70,18 @@
       "type": "boolean",
       "source": "waterfox/browser/app/profile/03-features.js"
     },
+    "browser.feeds.menu.enabled": {
+      "type": "boolean",
+      "default": true,
+      "source": "waterfox/browser/app/profile/03-features.js"
+    },
     "browser.feeds.order": {
       "type": "string",
+      "source": "waterfox/browser/app/profile/03-features.js"
+    },
+    "browser.feeds.preview.enabled": {
+      "type": "boolean",
+      "default": true,
       "source": "waterfox/browser/app/profile/03-features.js"
     },
     "browser.history.collectWireframes": {

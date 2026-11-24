@@ -14,6 +14,8 @@ profile_dir = "${home}/Library/Application Support/Waterfox/Profiles/your-profil
 "browser.tabs.autoGroupNewTabs" = true
 "browser.tabs.autoGroupNewTabs.placement" = "after"
 "waterfox.search.disableAIFeatures" = true
+"browser.feeds.menu.enabled" = true
+"browser.feeds.preview.enabled" = true
 
 [firefox.waterfox.appearance]
 tab_padding = "photon"
