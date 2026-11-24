@@ -1,5 +1,5 @@
 {
-  "audited_against": "Vivaldi 8.2.4133.84",
+  "audited_against": "opt/vivaldi/resources/vivaldi/prefs_definitions.json in https://downloads.vivaldi.com/stable/vivaldi-stable_8.2.4133.84-1_amd64.deb and https://downloads.vivaldi.com/stable/vivaldi-stable_8.3.4191.47-1_amd64.deb",
   "profile": {
     "completed_onboarding": "vivaldi.startup.has_seen_welcome_page",
     "tabs.position": "vivaldi.tabs.bar.position",
