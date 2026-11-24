@@ -40,9 +40,23 @@ func (config Config) values() (map[string]any, error) {
 	if values == nil {
 		values = map[string]any{}
 	}
+	keyboard := config.Keyboard
+	if enabled, configured := keyboard["enabled"]; configured {
+		const name = "floorp.keyboardshortcut.enabled"
+		if _, present := values[name]; present {
+			return nil, fmt.Errorf("%s conflicts with keyboard.enabled", name)
+		}
+		values[name] = enabled
+		if len(keyboard) == 1 {
+			keyboard = nil
+		} else {
+			keyboard = maps.Clone(keyboard)
+			delete(keyboard, "enabled")
+		}
+	}
 	for name, patch := range map[string]map[string]any{
 		"floorp.design.configs": config.Design, "floorp.panelSidebar.config": config.Sidebar,
-		"floorp.keyboardshortcut.config": config.Keyboard, "floorp.mousegesture.config": config.Gestures,
+		"floorp.keyboardshortcut.config": keyboard, "floorp.mousegesture.config": config.Gestures,
 		"floorp.workspaces.v4.config": config.Workspaces, "floorp.workspaces.v4.store": config.WorkspaceData,
 		"floorp.browser.ssb.config": config.PWA, "floorp.splitView.config": config.SplitView,
 		"floorp.splitView.paneSizes": config.PaneSizes, "floorp.contextMenu.config": config.ContextMenu,

@@ -12,7 +12,6 @@ profile_dir = "${home}/Library/Application Support/Floorp/Profiles/your-profile"
 [firefox.floorp.preferences]
 "floorp.workspaces.enabled" = true
 "floorp.panelSidebar.enabled" = true
-"floorp.keyboardshortcut.enabled" = true
 "floorp.mousegesture.enabled" = true
 "floorp.tabstacks.enabled" = true
 # Enable the workspace sync engine when using Floorp Sync
@@ -33,6 +32,9 @@ closePopupAfterClick = true
 [firefox.floorp.sidebar]
 overlay = true
 openOnHover = true
+
+[firefox.floorp.keyboard]
+enabled = true
 
 [firefox.floorp.keyboard.shortcuts."floorp-toggle-command-palette"]
 key = "F2"

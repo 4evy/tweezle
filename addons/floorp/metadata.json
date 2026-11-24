@@ -753,9 +753,6 @@
       "schema": {
         "type": "object",
         "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
           "schemaVersion": {
             "type": "integer",
             "minimum": -2147483648,

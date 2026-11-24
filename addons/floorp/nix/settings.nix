@@ -9,6 +9,7 @@ let
       Partial Floorp 12 native JSON configuration; objects merge with persisted
       preferences and explicit arrays replace. Omitted values retain defaults.
     '';
+  keyboardSchema = metadata.preferences."floorp.keyboardshortcut.config".schema;
 in
 {
   preferences = catalog.preferences metadata;
@@ -17,7 +18,22 @@ in
   panels = schema.optional (catalog.fromSchema
     metadata.preferences."floorp.panelSidebar.data".schema.properties.data
   ) "Complete panel list; replaces the existing list when configured.";
-  keyboard = feature "floorp.keyboardshortcut.config";
+  keyboard =
+    schema.optional
+      (catalog.fromSchema (
+        keyboardSchema
+        // {
+          properties = keyboardSchema.properties // {
+            enabled = {
+              type = "boolean";
+            };
+          };
+        }
+      ))
+      ''
+        Shortcut configuration patch. Enablement writes
+        floorp.keyboardshortcut.enabled, not the JSON store.
+      '';
   gestures = feature "floorp.mousegesture.config";
   workspaces = feature "floorp.workspaces.v4.config";
   workspace_data = feature "floorp.workspaces.v4.store";
