@@ -20,6 +20,7 @@
       "!**/tweezle",
       "!**/flake.lock",
       "!**/bun.lock",
+      "!**/*.md",
       "!.config/goreleaser.yaml"
     ]
   },

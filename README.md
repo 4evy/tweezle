@@ -235,12 +235,12 @@ disabled, apply this file with
 
 Browse [examples/](examples/) for starter configurations and reusable recipes.
 
-| What you want to configure | Examples |
-| --- | --- |
-| Chromium and its forks | [Shared recipes](examples/tweezle.toml), [Helium](examples/helium.toml), [Brave](examples/brave.toml), [Chrome](examples/chrome.toml), [Edge](examples/edge.toml), [Vivaldi](examples/vivaldi.toml), [ungoogled-chromium](examples/ungoogled.toml) |
-| Firefox and its forks | [Firefox](examples/firefox.toml), [LibreWolf](examples/librewolf.toml), [Waterfox](examples/waterfox.toml), [Floorp](examples/floorp.toml), [Zen](examples/zen.toml) |
-| Flatpak browsers | [Chromium](examples/flatpak-chromium.toml), [Firefox](examples/flatpak-firefox.toml) |
-| Extension settings | [Dark Reader, Stylus, SponsorBlock, and more](examples/extensions/extensions.toml), [storage JSON](examples/storage/storage.json), [uBlock Origin and Lite](examples/ublock/ublock.toml) |
-| Embedding Tweezle in Go | [Consumer example](examples/consumer/) |
+| What you want to configure | Examples                                                                                                                                                                                                                                           |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chromium and its forks     | [Shared recipes](examples/tweezle.toml), [Helium](examples/helium.toml), [Brave](examples/brave.toml), [Chrome](examples/chrome.toml), [Edge](examples/edge.toml), [Vivaldi](examples/vivaldi.toml), [ungoogled-chromium](examples/ungoogled.toml) |
+| Firefox and its forks      | [Firefox](examples/firefox.toml), [LibreWolf](examples/librewolf.toml), [Waterfox](examples/waterfox.toml), [Floorp](examples/floorp.toml), [Zen](examples/zen.toml)                                                                               |
+| Flatpak browsers           | [Chromium](examples/flatpak-chromium.toml), [Firefox](examples/flatpak-firefox.toml)                                                                                                                                                               |
+| Extension settings         | [Dark Reader, Stylus, SponsorBlock, and more](examples/extensions/extensions.toml), [storage JSON](examples/storage/storage.json), [uBlock Origin and Lite](examples/ublock/ublock.toml)                                                           |
+| Embedding Tweezle in Go    | [Consumer example](examples/consumer/)                                                                                                                                                                                                             |
 
 Licensed under [MIT](LICENSE).
