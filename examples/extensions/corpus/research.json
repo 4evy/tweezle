@@ -1,0 +1,131 @@
+{
+  "categories": [
+    "make_chrome_yours/accessibility",
+    "make_chrome_yours/functionality",
+    "make_chrome_yours/privacy",
+    "productivity/workflow",
+    "productivity/developer",
+    "productivity/education",
+    "productivity/communication",
+    "productivity/tools",
+    "lifestyle/art",
+    "lifestyle/entertainment",
+    "lifestyle/games",
+    "lifestyle/household",
+    "lifestyle/fun",
+    "lifestyle/news",
+    "lifestyle/shopping",
+    "lifestyle/social",
+    "lifestyle/travel",
+    "lifestyle/well_being"
+  ],
+  "supplemental": [
+    { "id": "dhdgffkkebhmkfjojejmpbldmpobfkfo", "name": "Tampermonkey" },
+    { "id": "hdokiejnpimakedhajhdlcegeplioahd", "name": "LastPass" },
+    { "id": "bmnlcjabgnpnenekpadlanbbkooimhnj", "name": "Honey" },
+    { "id": "nngceckbapebfimnlniiiahkandclblb", "name": "Bitwarden" },
+    { "id": "cjpalhdlnbpafiamejdnhcphjbkeiagm", "name": "uBlock Origin" },
+    { "id": "dbepggeogbaibhgnhhndojpepiihcmeb", "name": "Vimium" },
+    { "id": "jinjaccalgkegednnccohejagnlnfdag", "name": "Violentmonkey" },
+    { "id": "fhbjgbiflinjbdggehcddcbncdddomop", "name": "Postman" },
+    {
+      "id": "fmkadmapgofadopljbjfkapdkoienihi",
+      "name": "React Developer Tools"
+    },
+    { "id": "jnihajbhpnppcggbcgedagnkighmdlei", "name": "EditThisCookie" },
+    { "id": "bfbameneiokkgbdmiekhjnmfkcnldhhm", "name": "Web Developer" },
+    { "id": "eimadpbcbfnmbkopoojfekhnkhdbieeh", "name": "Dark Reader" },
+    { "id": "gcbommkclmclpchllfjekcdonpmejbdp", "name": "HTTPS Everywhere" },
+    { "id": "pkehgijcmpdhfbdbbnkijodmdjhbjlgp", "name": "Privacy Badger" },
+    { "id": "clngdbkpkpeebahjckkjfobafhncgmne", "name": "Stylus" },
+    { "id": "mnjggcdmjocbbbhaepdhchncahnbgone", "name": "SponsorBlock" },
+    { "id": "chphlpgkkbolifaimnlloiipkdnihall", "name": "OneTab" },
+    { "id": "aapbdbdomjkkjkaonfhkkikfgjllcleb", "name": "Google Translate" },
+    { "id": "kbfnbcaeplbcioakkpcpgfkobkghlhen", "name": "Grammarly" }
+  ],
+  "selections": [
+    {
+      "repo": "RES",
+      "repository": "https://github.com/honestbleeps/Reddit-Enhancement-Suite",
+      "id": "kbmfpngjjgdllneeigpgjifpgocmfgmb",
+      "files": [
+        "lib/core/options/storage.js",
+        "lib/core/modules/storage.js",
+        "lib/modules/nightMode.js"
+      ],
+      "reasons": [
+        "Per-module schemas with nested value wrappers and dependent options",
+        "Separate module enablement blob plus prefixed options keys",
+        "Complex tables, keybindings, filters, and runtime data"
+      ]
+    },
+    {
+      "repo": "obsidian-clipper",
+      "repository": "https://github.com/obsidianmd/obsidian-clipper",
+      "id": "cnjifjpddelmedmihgijeibhnjfabmlf",
+      "files": [
+        "src/utils/storage-utils.ts",
+        "src/managers/template-manager.ts",
+        "src/types/types.ts"
+      ],
+      "reasons": [
+        "UTF-16 compressed template chunk arrays",
+        "Six template modes, typed properties, triggers, and model/provider relationships",
+        "Distinct local and sync storage plus migrations"
+      ]
+    },
+    {
+      "repo": "SponsorBlock",
+      "repository": "https://github.com/ajayyy/SponsorBlock",
+      "id": "mnjggcdmjocbbbhaepdhchncahnbgone",
+      "files": ["src/config.ts", "src/utils/skipRule.type.ts"],
+      "reasons": [
+        "Recursive and/or predicates with typed comparison operators",
+        "Per-channel profiles, optional overrides, and enum category behavior",
+        "Local/sync migrations and nullable application state"
+      ]
+    },
+    {
+      "repo": "darkreader",
+      "repository": "https://github.com/darkreader/darkreader",
+      "id": "eimadpbcbfnmbkopoojfekhnkhdbieeh",
+      "files": [
+        "src/defaults.ts",
+        "src/background/user-storage.ts",
+        "src/background/utils/extension-api.ts"
+      ],
+      "reasons": [
+        "Nested themes, per-site overrides, presets, and automation modes",
+        "Base-36 sync chunk protocol and quota handling",
+        "Schema migration can replace incorrectly versioned site lists"
+      ]
+    },
+    {
+      "repo": "stylus",
+      "repository": "https://github.com/openstyles/stylus",
+      "id": "clngdbkpkpeebahjckkjfobafhncgmne",
+      "files": ["src/js/prefs.js", "src/background/prefs-api.js"],
+      "reasons": [
+        "108 preferences including computed names and literal dotted keys",
+        "Nested editor and beautifier options under one sync value",
+        "Styles and drafts stored outside the preference blob"
+      ],
+      "live_browser_validation": "Passed twice on Linux x86_64 with Helium 0.16.4.1 (Chromium 152.0.7977.75), Stylus 2.4.14, complete unpacked store package, disposable profile, and project profile apply; imported disabled sectioned and UserCSS styles, compiled UserCSS, set order, and read styles back through the extension API"
+    },
+    {
+      "repo": "ghostery",
+      "repository": "https://github.com/ghostery/ghostery-extension",
+      "id": "mlomiejdfkolichcflejclcbmpeaniij",
+      "files": [
+        "src/store/managed-config.js",
+        "src/managed_storage.json",
+        "src/background/reporting/storage-indexeddb.js"
+      ],
+      "reasons": [
+        "Managed policy precedence and local cached policy state",
+        "Custom filters and per-host tracker exceptions",
+        "IndexedDB reporting storage alongside chrome.storage configuration"
+      ]
+    }
+  ]
+}

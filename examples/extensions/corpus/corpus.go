@@ -12,9 +12,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"html"
 	"io"
 	"maps"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -26,6 +26,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/html"
+
 	"github.com/4evy/tweezle/addons/foundation/chrome/extensions"
 	fileutil "github.com/4evy/tweezle/internal/file"
 	repojson "github.com/4evy/tweezle/internal/json"
@@ -33,42 +35,8 @@ import (
 
 const store = "https://chromewebstore.google.com"
 
-var categories = []string{
-	"make_chrome_yours/accessibility", "make_chrome_yours/functionality",
-	"make_chrome_yours/privacy", "productivity/workflow", "productivity/developer",
-	"productivity/education", "productivity/communication", "productivity/tools",
-	"lifestyle/art", "lifestyle/entertainment", "lifestyle/games",
-	"lifestyle/household", "lifestyle/fun", "lifestyle/news", "lifestyle/shopping",
-	"lifestyle/social", "lifestyle/travel", "lifestyle/well_being",
-}
-
-// Popular extensions absent from category discovery, verified on their listings
-var supplementalIDs = []string{
-	"dhdgffkkebhmkfjojejmpbldmpobfkfo", // Tampermonkey
-	"hdokiejnpimakedhajhdlcegeplioahd", // LastPass
-	"bmnlcjabgnpnenekpadlanbbkooimhnj", // Honey
-	"nngceckbapebfimnlniiiahkandclblb", // Bitwarden
-	"cjpalhdlnbpafiamejdnhcphjbkeiagm", // uBlock Origin
-	"dbepggeogbaibhgnhhndojpepiihcmeb", // Vimium
-	"jinjaccalgkegednnccohejagnlnfdag", // Violentmonkey
-	"fhbjgbiflinjbdggehcddcbncdddomop", // Postman
-	"fmkadmapgofadopljbjfkapdkoienihi", // React Developer Tools
-	"jnihajbhpnppcggbcgedagnkighmdlei", // EditThisCookie
-	"bfbameneiokkgbdmiekhjnmfkcnldhhm", // Web Developer
-	"eimadpbcbfnmbkopoojfekhnkhdbieeh", // Dark Reader
-	"gcbommkclmclpchllfjekcdonpmejbdp", // HTTPS Everywhere
-	"pkehgijcmpdhfbdbbnkijodmdjhbjlgp", // Privacy Badger
-	"clngdbkpkpeebahjckkjfobafhncgmne", // Stylus
-	"mnjggcdmjocbbbhaepdhchncahnbgone", // SponsorBlock
-	"chphlpgkkbolifaimnlloiipkdnihall", // OneTab
-	"aapbdbdomjkkjkaonfhkkikfgjllcleb", // Google Translate
-	"kbfnbcaeplbcioakkpcpgfkobkghlhen", // Grammarly
-}
-
 var (
-	idPattern     = regexp.MustCompile(`\b[a-p]{32}\b`)
-	titlePattern  = regexp.MustCompile(`<meta property="og:title" content="([^"]+)"`)
-	usersPattern  = regexp.MustCompile(`([\d,]{3,})\+?\s*users`)
+	usersPattern  = regexp.MustCompile(`^([\d,]+)\+?[\s\p{Zs}]*users?$`)
 	githubPattern = regexp.MustCompile(`https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+`)
 	markers       = map[string]*regexp.Regexp{
 		"local":            regexp.MustCompile(`(?i)(?:chrome|browser)\.storage\.local`),
@@ -111,40 +79,67 @@ func hash(data []byte) string {
 	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
-func (r *researcher) fetch(address, file string) ([]byte, error) {
-	compressed, err := os.ReadFile(file + ".gz")
-	if err == nil && len(compressed) > 0 {
-		reader, err := gzip.NewReader(bytes.NewReader(compressed))
-		if err != nil {
-			return nil, err
-		}
-		defer func() { _ = reader.Close() }()
-		return io.ReadAll(reader)
-	}
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
-	data, err := os.ReadFile(file)
-	if err == nil && len(data) > 0 {
-		return data, nil
-	}
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
-	data, err = r.client.Read(context.Background(), address)
+type capture struct {
+	data []byte
+	at   time.Time
+}
+
+func readCapture(file string) (capture, error) {
+	input, err := os.Open(file)
 	if err != nil {
-		return nil, err
+		return capture{}, err
 	}
-	if filepath.Ext(file) == ".html" {
-		err = fileutil.WriteWith(file+".gz", fileutil.DefaultFilePerm, func(output io.Writer) error {
-			writer := gzip.NewWriter(output)
-			_, writeErr := writer.Write(data)
-			return errors.Join(writeErr, writer.Close())
-		})
-	} else {
-		err = fileutil.WriteFile(file, data, fileutil.DefaultFilePerm)
+	defer func() { _ = input.Close() }()
+	info, err := input.Stat()
+	if err != nil {
+		return capture{}, err
 	}
-	return data, err
+	// Older cache files only have a file modification time
+	at := info.ModTime()
+	var reader io.Reader = input
+	if filepath.Ext(file) == ".gz" {
+		compressed, err := gzip.NewReader(input)
+		if err != nil {
+			return capture{}, err
+		}
+		defer func() { _ = compressed.Close() }()
+		if !compressed.ModTime.IsZero() {
+			at = compressed.ModTime
+		}
+		reader = compressed
+	}
+	data, err := io.ReadAll(reader)
+	if err == nil && len(data) == 0 {
+		err = fmt.Errorf("empty capture: %s", file)
+	}
+	return capture{data: data, at: at.UTC()}, err
+}
+
+func (r *researcher) fetchPage(address, file string) (capture, error) {
+	if saved, err := readCapture(file + ".gz"); !errors.Is(err, os.ErrNotExist) {
+		return saved, err
+	}
+	if saved, err := readCapture(file); !errors.Is(err, os.ErrNotExist) {
+		return saved, err
+	}
+	data, err := r.client.Read(context.Background(), address)
+	if err != nil {
+		return capture{}, err
+	}
+	if len(data) == 0 {
+		return capture{}, fmt.Errorf("empty response from %s", address)
+	}
+	at := time.Now().UTC().Truncate(time.Second)
+	err = fileutil.WriteWith(file+".gz", fileutil.DefaultFilePerm, func(output io.Writer) error {
+		writer := gzip.NewWriter(output)
+		writer.ModTime = at
+		_, writeErr := writer.Write(data)
+		return errors.Join(writeErr, writer.Close())
+	})
+	if err != nil {
+		return capture{}, err
+	}
+	return capture{data: data, at: at}, nil
 }
 
 // Preserve input order while limiting concurrent network and archive work
@@ -167,68 +162,179 @@ func pool[T, R any](items []T, fn func(T) R) []R {
 	return results
 }
 
-func (r *researcher) metadata(id string) record {
+func attribute(node *html.Node, key string) string {
+	for _, attr := range node.Attr {
+		if attr.Namespace == "" && attr.Key == key {
+			return attr.Val
+		}
+	}
+	return ""
+}
+
+func storePath(href string) string {
+	target, err := url.Parse(href)
+	if err != nil || (target.Host != "" && target.Host != "chromewebstore.google.com") ||
+		(target.Scheme != "" && target.Scheme != "https") {
+		return ""
+	}
+	return path.Clean("/" + target.Path)
+}
+
+func userCount(node *html.Node) string {
+	for sibling := node.NextSibling; sibling != nil; sibling = sibling.NextSibling {
+		if sibling.Type == html.ElementNode && sibling.Data == "a" {
+			return ""
+		}
+		var countText string
+		switch {
+		case sibling.Type == html.TextNode:
+			countText = sibling.Data
+		case sibling.Type == html.ElementNode && sibling.Data != "script" && sibling.Data != "style":
+			var text strings.Builder
+			for child := range sibling.Descendants() {
+				if child.Type == html.TextNode {
+					text.WriteString(child.Data)
+				}
+			}
+			countText = text.String()
+		}
+		if match := usersPattern.FindStringSubmatch(strings.TrimSpace(countText)); match != nil {
+			return match[1]
+		}
+	}
+	return ""
+}
+
+type listing struct {
+	item record
+	at   time.Time
+}
+
+func (r *researcher) metadata(id string) listing {
 	address := store + "/detail/" + id + "?hl=en"
-	page, err := r.fetch(address, filepath.Join(r.cache, "listings", id+".html"))
+	saved, err := r.fetchPage(address, filepath.Join(r.cache, "listings", id+".html"))
+	failure := func(err error) listing {
+		return listing{item: record{"id": id, "error": err.Error()}, at: saved.at}
+	}
 	if err != nil {
-		return record{"id": id, "error": err.Error()}
+		return failure(err)
 	}
-	title := titlePattern.FindSubmatch(page)
-	users := usersPattern.FindSubmatch(page)
-	if title == nil || users == nil {
-		return record{"id": id, "error": "missing title or user count"}
-	}
-	count, err := strconv.Atoi(strings.ReplaceAll(string(users[1]), ",", ""))
+	doc, err := html.Parse(bytes.NewReader(saved.data))
 	if err != nil {
-		return record{"id": id, "error": err.Error()}
+		return failure(err)
 	}
+	var title, users string
 	repos := map[string]bool{}
-	for _, repo := range githubPattern.FindAllString(string(page), -1) {
-		repos[repo] = true
+	for node := range doc.Descendants() {
+		if node.Type != html.ElementNode {
+			continue
+		}
+		switch node.Data {
+		case "meta":
+			if attribute(node, "property") == "og:title" {
+				title = attribute(node, "content")
+			}
+		case "a":
+			href := attribute(node, "href")
+			if users == "" {
+				listingPath := storePath(href)
+				if listingPath == "/category/extensions" || strings.HasPrefix(listingPath, "/category/extensions/") {
+					users = userCount(node)
+				}
+			}
+			if repo := githubPattern.FindString(href); strings.HasPrefix(href, "https://github.com/") && repo != "" {
+				repos[repo] = true
+			}
+		}
 	}
-	return record{
-		"id": id, "name": strings.TrimSuffix(html.UnescapeString(string(title[1])), " - Chrome Web Store"),
-		"users": count, "listing_url": address, "listing_sha256": hash(page),
-		"github_links": slices.Sorted(maps.Keys(repos)),
+	if title == "" || users == "" {
+		return failure(errors.New("missing title or user count"))
 	}
+	count, err := strconv.Atoi(strings.ReplaceAll(users, ",", ""))
+	if err != nil {
+		return failure(err)
+	}
+	return listing{at: saved.at, item: record{
+		"id": id, "name": strings.TrimSuffix(title, " - Chrome Web Store"),
+		"users": count, "listing_url": address, "listing_sha256": hash(saved.data),
+		"listing_captured_at": saved.at, "github_links": slices.Sorted(maps.Keys(repos)),
+	}}
 }
 
 func (r *researcher) collect() error {
 	candidates := map[string]bool{}
-	for _, id := range supplementalIDs {
-		candidates[id] = true
+	for _, extension := range research.Supplemental {
+		candidates[extension.ID] = true
+	}
+	var oldest, latest time.Time
+	includeCapture := func(at time.Time) {
+		if at.IsZero() {
+			return
+		}
+		if oldest.IsZero() || at.Before(oldest) {
+			oldest = at
+		}
+		if at.After(latest) {
+			latest = at
+		}
 	}
 	categoryCounts := map[string]int{}
-	for _, category := range categories {
-		data, err := r.fetch(store+"/category/extensions/"+category+"?hl=en",
+	for _, category := range research.Categories {
+		saved, err := r.fetchPage(store+"/category/extensions/"+category+"?hl=en",
 			filepath.Join(r.cache, "categories", strings.ReplaceAll(category, "/", "-")+".html"))
 		if err != nil {
 			return err
 		}
+		includeCapture(saved.at)
+		doc, err := html.Parse(bytes.NewReader(saved.data))
+		if err != nil {
+			return err
+		}
 		ids := map[string]bool{}
-		for _, id := range idPattern.FindAllString(string(data), -1) {
-			ids[id], candidates[id] = true, true
+		for node := range doc.Descendants() {
+			if node.Type == html.ElementNode && node.Data == "a" {
+				target := storePath(attribute(node, "href"))
+				if id := path.Base(target); strings.HasPrefix(target, "/detail/") && extensions.ValidExtensionID(id) {
+					ids[id], candidates[id] = true, true
+				}
+			}
 		}
 		if len(ids) == 0 {
 			return fmt.Errorf("no IDs in category %s", category)
 		}
 		categoryCounts[category] = len(ids)
 	}
+	const seedFile = "upstream-top-600.json"
+	const seedURL = "https://github.com/HughParry/chrome-extension-identifier/blob/main/data/top-600.json"
 	var seed struct {
-		Extensions []struct {
+		GeneratedAt string `json:"generatedAt"`
+		Extensions  []struct {
 			ID string `json:"id"`
 		} `json:"extensions"`
 	}
-	if err := readJSON(filepath.Join(r.cache, "upstream-top-600.json"), &seed); err == nil {
+	var seedData record
+	if data, err := os.ReadFile(filepath.Join(r.cache, seedFile)); err == nil {
+		if err := repojson.Default.DecodeInto(bytes.NewReader(data), &seed); err != nil {
+			return fmt.Errorf("%s: %w", seedFile, err)
+		}
+		if len(seed.Extensions) == 0 {
+			return fmt.Errorf("%s: no seed extensions", seedFile)
+		}
 		for _, item := range seed.Extensions {
+			if !extensions.ValidExtensionID(item.ID) {
+				return fmt.Errorf("%s: invalid extension ID %q", seedFile, item.ID)
+			}
 			candidates[item.ID] = true
 		}
+		seedData = record{"url": seedURL, "sha256": hash(data), "generated_at": seed.GeneratedAt}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	records := pool(slices.Sorted(maps.Keys(candidates)), r.metadata)
 	valid, failed := []record{}, []record{}
-	for _, item := range records {
+	for _, result := range records {
+		includeCapture(result.at)
+		item := result.item
 		if _, exists := item["error"]; exists {
 			failed = append(failed, item)
 		} else {
@@ -247,22 +353,30 @@ func (r *researcher) collect() error {
 	for index, item := range valid[:150] {
 		item["rank"] = index + 1
 	}
-	listingURLs := make([]string, len(supplementalIDs))
-	for index, id := range supplementalIDs {
-		listingURLs[index] = store + "/detail/" + id + "?hl=en"
+	listingURLs := make([]string, len(research.Supplemental))
+	for index, extension := range research.Supplemental {
+		listingURLs[index] = store + "/detail/" + extension.ID + "?hl=en"
+	}
+	method := "150 highest displayed user counts among category-listing IDs and supplemental popular IDs"
+	if seedData != nil {
+		method += " and IDs from the cached upstream top-600 seed"
 	}
 	output := record{
-		"collected_at": time.Now().UTC().Format(time.RFC3339Nano),
-		"method":       "150 highest displayed user counts among category-listing IDs, the July 2026 top-600 seed, and supplemental popular IDs; ties sorted by ID",
+		"collected_at":       latest,
+		"collection_started": oldest,
+		"method":             method + "; ties sorted by ID",
 		"limitations": []string{
 			"Category discovery cannot prove a global top 150",
 			"Store user counts are rounded displayed counts, not exact installs",
 			"Popularity does not establish configuration complexity",
+			"The collection range uses the capture timestamps of category and listing pages, or cache file modification time for older captures",
 		},
-		"seed_url":   "https://github.com/HughParry/chrome-extension-identifier/blob/main/data/top-600.json",
 		"categories": categoryCounts, "supplemental_listing_urls": listingURLs,
 		"candidate_count": len(candidates), "valid_listing_count": len(valid),
 		"failed_listings": failed, "extensions": valid[:150],
+	}
+	if seedData != nil {
+		output["seed"] = seedData
 	}
 	if err := writeJSON(filepath.Join(r.cache, "pool.json"), output); err != nil {
 		return err
@@ -311,21 +425,9 @@ func readEntry(entry *zip.File) ([]byte, error) {
 	return data, nil
 }
 
-func (r *researcher) packageEvidence(item record) (record, error) {
-	id, ok := item["id"].(string)
-	if !ok || !extensions.ValidExtensionID(id) {
-		return nil, fmt.Errorf("invalid extension ID: %v", item["id"])
-	}
-	address, err := extensions.ChromeStoreCRXDownloadURLForVersion(
-		"https://clients2.google.com/service/update2/crx", id, "150.0.0.0",
-	)
-	if err != nil {
-		return nil, err
-	}
-	data, err := r.fetch(address, filepath.Join(r.cache, "packages", id+".crx"))
-	if err != nil {
-		return nil, err
-	}
+const inspectionVersion = "v1"
+
+func (r *researcher) packageEvidence(id, address, digest string, data []byte) (record, error) {
 	archive, err := crxArchive(data)
 	if err != nil {
 		return nil, err
@@ -343,7 +445,7 @@ func (r *researcher) packageEvidence(item record) (record, error) {
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	destination := filepath.Join(r.cache, "unpacked", id)
+	destination := filepath.Join(r.cache, "unpacked", inspectionVersion, id, digest)
 	if err := os.MkdirAll(destination, 0o755); err != nil {
 		return nil, err
 	}
@@ -354,13 +456,6 @@ func (r *researcher) packageEvidence(item record) (record, error) {
 	defer func() { _ = unpacked.Close() }()
 	evidence, skipped := []record{}, []record{}
 	repos := map[string]bool{}
-	if links, ok := item["github_links"].([]any); ok {
-		for _, link := range links {
-			if repo, ok := link.(string); ok {
-				repos[repo] = true
-			}
-		}
-	}
 	counts := map[string]int{}
 	for key := range markers {
 		counts[key] = 0
@@ -435,13 +530,13 @@ func (r *researcher) packageEvidence(item record) (record, error) {
 		hostPermissions = []any{}
 	}
 	return record{
-		"status": "inspected", "package_url": address, "package_sha256": hash(data),
+		"status": "inspected", "package_url": address, "package_sha256": digest,
 		"version": manifest["version"], "manifest_version": manifest["manifest_version"],
 		"permissions": permissions, "host_permissions": hostPermissions,
 		"options_page": options, "storage_schema": storageSchema,
 		"js_file_count": jsFiles, "js_bytes": jsBytes, "markers": counts,
 		"evidence": evidence, "skipped_files": skipped,
-		"repository_candidates": slices.Sorted(maps.Keys(repos)), "configuration_review": "pending",
+		"repository_candidates": slices.Sorted(maps.Keys(repos)),
 	}, nil
 }
 
@@ -450,28 +545,86 @@ type inspection struct {
 	err    error
 }
 
+// Listing links can change independently of the package
+func includeListingRepositories(result, item record) {
+	repos := map[string]bool{}
+	for _, links := range []any{result["repository_candidates"], item["github_links"]} {
+		switch links := links.(type) {
+		case []string:
+			for _, repo := range links {
+				repos[repo] = true
+			}
+		case []any:
+			for _, link := range links {
+				if repo, ok := link.(string); ok {
+					repos[repo] = true
+				}
+			}
+		}
+	}
+	result["repository_candidates"] = slices.Sorted(maps.Keys(repos))
+	result["configuration_review"] = "pending"
+}
+
 func (r *researcher) inspectPackage(item record) inspection {
 	id, ok := item["id"].(string)
 	if !ok || !extensions.ValidExtensionID(id) {
 		return inspection{err: fmt.Errorf("invalid extension ID: %v", item["id"])}
 	}
-	saved := filepath.Join(r.cache, "inspections", id+".json")
+	address, err := extensions.ChromeStoreCRXDownloadURLForVersion(
+		"https://clients2.google.com/service/update2/crx", id, "150.0.0.0",
+	)
+	if err != nil {
+		return inspection{err: err}
+	}
+	unavailable := func(err error) inspection {
+		fmt.Printf("%3v %v: unavailable\n", item["rank"], item["name"])
+		return inspection{result: record{"status": "unavailable", "error": err.Error()}}
+	}
+	packageFile := filepath.Join(r.cache, "packages", id+".crx")
+	data, err := os.ReadFile(packageFile)
+	downloaded := errors.Is(err, os.ErrNotExist)
+	if downloaded {
+		data, err = r.client.Read(context.Background(), address)
+	}
+	if err != nil {
+		return unavailable(err)
+	}
+	digest := hash(data)
+	saved := filepath.Join(r.cache, "inspections", inspectionVersion, id+".json")
+	unpacked := filepath.Join(r.cache, "unpacked", inspectionVersion, id, digest)
 	var result record
+	cached := false
 	if err := readJSON(saved, &result); err == nil {
-		if result["status"] == "inspected" {
-			return inspection{result: result}
+		if result["status"] == "inspected" && result["package_url"] == address && result["package_sha256"] == digest {
+			info, err := os.Stat(unpacked)
+			cached = err == nil && info.IsDir()
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return inspection{err: err}
+			}
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return inspection{err: err}
 	}
-	result, err := r.packageEvidence(item)
-	if err != nil {
-		result = record{"status": "unavailable", "error": err.Error()}
+	if !cached {
+		result, err = r.packageEvidence(id, address, digest, data)
+		if err != nil {
+			return unavailable(err)
+		}
 	}
-	if err := writeJSON(saved, result); err != nil {
-		return inspection{err: err}
+	if downloaded {
+		// Only keep new downloads after they pass static inspection
+		if err := fileutil.WriteFile(packageFile, data, fileutil.DefaultFilePerm); err != nil {
+			return inspection{err: err}
+		}
 	}
-	fmt.Printf("%3v %v: %s\n", item["rank"], item["name"], result["status"])
+	if !cached {
+		if err := writeJSON(saved, result); err != nil {
+			return inspection{err: err}
+		}
+		fmt.Printf("%3v %v: inspected\n", item["rank"], item["name"])
+	}
+	includeListingRepositories(result, item)
 	return inspection{result: result}
 }
 
@@ -486,15 +639,18 @@ func (r *researcher) inspect() error {
 		return fmt.Errorf("pool.json: missing extensions array")
 	}
 	items := make([]record, len(list))
+	ids := make(map[string]bool, len(items))
 	for index, item := range list {
 		var ok bool
 		items[index], ok = item.(map[string]any)
 		if !ok {
 			return fmt.Errorf("pool.json: extension %d is not an object", index)
 		}
-	}
-	if err := os.MkdirAll(filepath.Join(r.cache, "inspections"), 0o755); err != nil {
-		return err
+		id, ok := items[index]["id"].(string)
+		if !ok || !extensions.ValidExtensionID(id) || ids[id] {
+			return fmt.Errorf("pool.json: invalid or duplicated extension ID %v", items[index]["id"])
+		}
+		ids[id] = true
 	}
 	for index, result := range pool(items, r.inspectPackage) {
 		if result.err != nil {
