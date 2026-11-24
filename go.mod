@@ -6,7 +6,7 @@ require (
 	github.com/Jeffail/gabs/v2 v2.7.0
 	github.com/adrg/xdg v0.5.3
 	github.com/buildkite/shellwords v1.0.1
-	github.com/carlmjohnson/requests v0.26.3
+	github.com/carlmjohnson/requests/v2 v2.26.0
 	github.com/chromedp/cdproto v0.160.8
 	github.com/chromedp/chromedp v0.24.0
 	github.com/daku10/go-lz-string v0.0.7
