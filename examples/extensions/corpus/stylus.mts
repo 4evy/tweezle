@@ -1,9 +1,9 @@
-import path from "node:path";
 import { parse } from "@babel/parser";
+import { schemaFields } from "./schemas.mts";
 
 type Values = Record<string, any>;
 
-export async function stylusStyles(repository: string) {
+export function stylusStyles(read: (file: string) => string) {
   const styles: Values[] = [
     {
       enabled: false,
@@ -116,16 +116,12 @@ export async function stylusStyles(repository: string) {
       },
     },
   ];
-  const source = await Bun.file(
-    path.join(repository, "src/.types.d.ts"),
-  ).text();
+  const source = read("src/.types.d.ts");
   const ast = parse(source, { sourceType: "module", plugins: ["typescript"] });
   const schemas: Record<string, string[]> = {};
   for (const node of ast.program.body) {
     if (node.type === "TSInterfaceDeclaration")
-      schemas[node.id.name] = node.body.body
-        .map((member: any) => member.key?.name)
-        .filter(Boolean);
+      schemas[node.id.name] = schemaFields(node.body.body);
   }
   const examples: Record<string, Values[]> = {
     StyleObj: styles,

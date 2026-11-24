@@ -1,122 +1,208 @@
 import { parse } from "@babel/parser";
 
-// Babel nodes vary across the JavaScript and Flow declarations under review
-export type Node = Record<string, any>;
+import type { File, Node, ObjectProperty } from "@babel/types";
 
-export function parseSource(source: string): Node {
+type Scalar = string | number | boolean | null | undefined;
+export type Data = Scalar | Data[] | { [key: string]: Data };
+
+export function parseSource(source: string): File {
   return parse(source, { sourceType: "module", plugins: ["flow", "jsx"] });
 }
 
-export function visit(node: unknown, callback: (node: Node) => void): void {
-  if (!node || typeof node !== "object") return;
-  if (Array.isArray(node)) {
-    for (const child of node) visit(child, callback);
-    return;
-  }
-  const value = node as Node;
-  if (typeof value.type === "string") callback(value);
-  for (const [key, child] of Object.entries(value)) {
-    if (key !== "loc" && key !== "comments" && key !== "tokens")
-      visit(child, callback);
+function isNode(value: unknown): value is Node {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "type" in value &&
+    typeof value.type === "string"
+  );
+}
+
+export function visit(
+  node: Node | null | undefined,
+  callback: (node: Node) => void,
+): void {
+  if (!node) return;
+  callback(node);
+  for (const [key, value] of Object.entries(node)) {
+    if (
+      [
+        "loc",
+        "comments",
+        "leadingComments",
+        "innerComments",
+        "trailingComments",
+        "tokens",
+      ].includes(key)
+    )
+      continue;
+    if (Array.isArray(value)) {
+      for (const child of value) {
+        if (isNode(child)) visit(child, callback);
+      }
+    } else if (isNode(value)) visit(value, callback);
   }
 }
 
-export function property(node: Node, name: string): Node | undefined {
-  return node.properties?.find(
-    (member: Node) =>
+export function propertyName(node: Node): string | undefined {
+  switch (node.type) {
+    case "Identifier":
+      return node.name;
+    case "StringLiteral":
+    case "NumericLiteral":
+      return String(node.value);
+    default:
+      return undefined;
+  }
+}
+
+export function property(
+  node: Node | null | undefined,
+  name: string,
+): Node | undefined {
+  if (node?.type !== "ObjectExpression") return undefined;
+  return node.properties.find(
+    (member): member is ObjectProperty =>
       member.type === "ObjectProperty" &&
       !member.computed &&
-      (member.key.name ?? member.key.value) === name,
+      propertyName(member.key) === name,
   )?.value;
 }
 
-// Resolve data declarations only; calls other than JSON.stringify are rejected
-export function literal(
-  node: Node,
-  bindings: Map<string, Node> = new Map(),
-  resolving = new Set<string>(),
-): any {
-  switch (node.type) {
-    case "StringLiteral":
-    case "NumericLiteral":
-    case "BooleanLiteral":
-      return node.value;
-    case "NullLiteral":
-      return null;
-    case "TypeCastExpression":
-      return literal(node.expression, bindings, resolving);
-    case "ArrayExpression":
-      return node.elements.map((member: Node | null) =>
-        member ? literal(member, bindings, resolving) : null,
-      );
-    case "ObjectExpression": {
-      const result: Record<string, any> = {};
-      for (const member of node.properties) {
-        if (member.type === "SpreadElement") {
-          Object.assign(result, literal(member.argument, bindings, resolving));
-        } else if (member.type === "ObjectProperty") {
-          const key = member.computed
-            ? literal(member.key, bindings, resolving)
-            : (member.key.name ?? member.key.value);
-          result[key] = literal(member.value, bindings, resolving);
-        } else throw new Error(`Non-data object member ${member.type}`);
-      }
-      return result;
-    }
-    case "Identifier": {
-      if (node.name === "undefined") return undefined;
-      const declaration = bindings.get(node.name);
-      if (!declaration || resolving.has(node.name))
-        throw new Error(`Unresolved identifier ${node.name}`);
-      const next = new Set(resolving).add(node.name);
-      return literal(declaration, bindings, next);
-    }
-    case "UnaryExpression": {
-      const value = literal(node.argument, bindings, resolving);
-      if (node.operator === "-") return -value;
-      if (node.operator === "+") return +value;
-      if (node.operator === "!") return !value;
-      if (node.operator === "void") return undefined;
-      throw new Error(`Unsupported unary operator ${node.operator}`);
-    }
-    case "BinaryExpression": {
-      const left = literal(node.left, bindings, resolving);
-      const right = literal(node.right, bindings, resolving);
-      if (node.operator === "+") return left + right;
-      if (node.operator === "-") return left - right;
-      if (node.operator === "*") return left * right;
-      if (node.operator === "/") return left / right;
-      if (node.operator === "%") return left % right;
-      throw new Error(`Unsupported binary operator ${node.operator}`);
-    }
-    case "TemplateLiteral": {
-      let value = "";
-      for (let index = 0; index < node.quasis.length; index++) {
-        value += node.quasis[index].value.cooked;
-        if (index < node.expressions.length)
-          value += literal(node.expressions[index], bindings, resolving);
-      }
-      return value;
-    }
-    case "CallExpression":
-      if (
-        node.callee.type === "MemberExpression" &&
-        node.callee.object.name === "JSON" &&
-        node.callee.property.name === "stringify" &&
-        node.arguments.length === 1
-      ) {
-        return JSON.stringify(literal(node.arguments[0], bindings, resolving));
-      }
-      break;
-  }
-  throw new Error(`Unsupported data expression ${node.type}`);
+type Dialect = {
+  skipProperty?: (member: ObjectProperty) => boolean;
+  resolve?: (
+    node: Node,
+    read: (node: Node) => Data,
+  ) => { value: Data } | undefined;
+};
+
+function scalar(value: Data): Scalar {
+  if (value === null || typeof value !== "object") return value;
+  throw new Error("Expected a scalar data value");
 }
 
-export function declarations(ast: Node): Map<string, Node> {
+// Interpret literals and explicitly supported data forms rather than running code
+export function literal(
+  node: Node | null | undefined,
+  bindings: ReadonlyMap<string, Node>,
+  dialect: Dialect = {},
+): Data {
+  const resolving = new Set<string>();
+  function read(node: Node | null | undefined): Data {
+    if (!node) throw new Error("Missing data expression");
+    const extension = dialect.resolve?.(node, read);
+    if (extension) return extension.value;
+    switch (node.type) {
+      case "StringLiteral":
+      case "NumericLiteral":
+      case "BooleanLiteral":
+        return node.value;
+      case "NullLiteral":
+        return null;
+      case "TypeCastExpression":
+        return read(node.expression);
+      case "ArrayExpression":
+        return node.elements.map((member) => (member ? read(member) : null));
+      case "ObjectExpression": {
+        const result: Record<string, Data> = Object.create(null);
+        for (const member of node.properties) {
+          if (member.type === "SpreadElement") {
+            Object.assign(result, read(member.argument));
+          } else if (member.type === "ObjectProperty") {
+            if (dialect.skipProperty?.(member)) continue;
+            const key = member.computed
+              ? String(scalar(read(member.key)))
+              : propertyName(member.key);
+            if (key === undefined)
+              throw new Error(`Unsupported data key ${member.key.type}`);
+            result[key] = read(member.value);
+          } else throw new Error(`Non-data object member ${member.type}`);
+        }
+        return result;
+      }
+      case "Identifier": {
+        if (node.name === "undefined") return undefined;
+        const declaration = bindings.get(node.name);
+        if (!declaration || resolving.has(node.name))
+          throw new Error(`Unresolved identifier ${node.name}`);
+        resolving.add(node.name);
+        try {
+          return read(declaration);
+        } finally {
+          resolving.delete(node.name);
+        }
+      }
+      case "UnaryExpression": {
+        const value = read(node.argument);
+        if (node.operator === "-") return -Number(scalar(value));
+        if (node.operator === "+") return Number(scalar(value));
+        if (node.operator === "!") return !value;
+        if (node.operator === "void") return undefined;
+        break;
+      }
+      case "BinaryExpression": {
+        const left = scalar(read(node.left));
+        const right = scalar(read(node.right));
+        if (node.operator === ">") {
+          if (typeof left === "string" && typeof right === "string")
+            return left > right;
+          return Number(left) > Number(right);
+        }
+        if (node.operator === "+")
+          return typeof left === "string" || typeof right === "string"
+            ? String(left) + String(right)
+            : Number(left) + Number(right);
+        if (node.operator === "-") return Number(left) - Number(right);
+        if (node.operator === "*") return Number(left) * Number(right);
+        if (node.operator === "/") return Number(left) / Number(right);
+        if (node.operator === "%") return Number(left) % Number(right);
+        break;
+      }
+      case "ConditionalExpression":
+        return read(read(node.test) ? node.consequent : node.alternate);
+      case "LogicalExpression": {
+        const left = read(node.left);
+        if (node.operator === "||") return left || read(node.right);
+        if (node.operator === "&&") return left && read(node.right);
+        if (node.operator === "??") return left ?? read(node.right);
+        break;
+      }
+      case "TemplateLiteral": {
+        let value = "";
+        for (let index = 0; index < node.quasis.length; index++) {
+          const chunk = node.quasis[index].value.cooked;
+          if (chunk == null) throw new Error("Invalid data template literal");
+          value += chunk;
+          if (index < node.expressions.length)
+            value += String(scalar(read(node.expressions[index])));
+        }
+        return value;
+      }
+      case "CallExpression":
+        if (
+          node.callee.type === "MemberExpression" &&
+          !node.callee.computed &&
+          node.callee.object.type === "Identifier" &&
+          node.callee.object.name === "JSON" &&
+          node.callee.property.type === "Identifier" &&
+          node.callee.property.name === "stringify" &&
+          node.arguments.length === 1
+        ) {
+          return JSON.stringify(read(node.arguments[0]));
+        }
+        break;
+    }
+    throw new Error(`Unsupported data expression ${node.type}`);
+  }
+  return read(node);
+}
+
+export function declarations(ast: File): Map<string, Node> {
   const result = new Map<string, Node>();
-  for (let statement of ast.program.body) {
-    if (statement.type === "ExportNamedDeclaration")
-      statement = statement.declaration;
+  for (const entry of ast.program.body) {
+    const statement =
+      entry.type === "ExportNamedDeclaration" ? entry.declaration : entry;
     if (statement?.type !== "VariableDeclaration") continue;
     for (const declaration of statement.declarations) {
       if (declaration.id.type === "Identifier" && declaration.init)

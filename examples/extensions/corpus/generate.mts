@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Evaluate only reviewed default declarations, never extension entry points
+// Extract data from fixed upstream commits and run only reviewed source fragments
 import path from "node:path";
 import vm from "node:vm";
 import LZString from "lz-string";
@@ -51,11 +51,96 @@ type Review = {
 };
 
 const root = import.meta.dir;
-const repos = path.resolve(root, "../../../.sources/extension-research/repos");
+const cache =
+  Bun.env.EXTENSION_RESEARCH_CACHE ||
+  path.resolve(root, "../../../.sources/extension-research");
+const repos = path.join(cache, "repos");
 const transpiler = new Bun.Transpiler({ loader: "ts" });
 const reviews: Review[] = [];
-const read = (repo: string, file: string): Promise<string> =>
-  Bun.file(path.join(repos, repo, file)).text();
+const pending = new Map<string, string>();
+
+// Changing an executable pin requires reviewing its listed source files again
+// Git blobs bypass working-tree edits, filters, and replacement refs
+const sources = {
+  darkreader: {
+    commit: "b4fb44b3aaa2c28353cf9d649cd8f10c1fa95f58",
+    executable: [
+      "src/defaults.ts",
+      "src/background/utils/extension-api.ts",
+      "src/utils/validation.ts",
+      "src/utils/text.ts",
+      "src/generators/utils/parse.ts",
+      "src/generators/dynamic-theme.ts",
+      "src/generators/css-filter.ts",
+      "src/generators/static-theme.ts",
+      "src/generators/detector-hints.ts",
+    ],
+  },
+  stylus: {
+    commit: "22de88d447c5b01baf4b4bfb646ff9ec7e5d0c9a",
+    executable: ["src/js/prefs.js", "src/js/consts.js"],
+  },
+  SponsorBlock: {
+    commit: "914e2c88d4f80be9bcf3b3299f155c703ee99061",
+    executable: ["src/config.ts"],
+  },
+  "obsidian-clipper": {
+    commit: "6d56d618b00bd970aa738d6a7a61edee27783e81",
+    executable: ["src/utils/storage-utils.ts"],
+  },
+  RES: {
+    commit: "4defffc12235b86b50e458d9f3565c96376609ec",
+    executable: [],
+  },
+  ghostery: {
+    commit: "1a7c166390f08d3a630a820a8e35a6b9852d23b8",
+    executable: [],
+  },
+} satisfies Record<string, { commit: string; executable: string[] }>;
+type Source = keyof typeof sources;
+const mazeUtils = {
+  repo: "SponsorBlock/maze-utils",
+  commit: "6b5b5be38f9db60d9bab70c1d3c196504578e552",
+  file: "src/config.ts",
+  sha256: "94c2136c24c11633b4edd24c98645e3218537cdc39c75b985248ad0e421efd00",
+};
+
+async function readMazeUtils(): Promise<string> {
+  // This data-only submodule is also distributed as an unpacked source archive
+  const file = path.join(repos, mazeUtils.repo, mazeUtils.file);
+  const data = await Bun.file(file).bytes();
+  const hash = new Bun.CryptoHasher("sha256").update(data).digest("hex");
+  if (hash !== mazeUtils.sha256)
+    throw new Error(`${file} does not match reviewed ${mazeUtils.commit}`);
+  return new TextDecoder().decode(data);
+}
+
+function read(repo: Source, file: string): string {
+  const ref = `${sources[repo].commit}:${file}`;
+  const result = Bun.spawnSync({
+    cmd: [
+      "git",
+      "--no-replace-objects",
+      "-C",
+      path.join(repos, repo),
+      "cat-file",
+      "blob",
+      ref,
+    ],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (result.exitCode !== 0)
+    throw new Error(`Cannot read ${repo}:${ref}: ${result.stderr.toString()}`);
+  return result.stdout.toString();
+}
+
+function executableSource(repo: Source, file: string): string {
+  const allowed: readonly string[] = sources[repo].executable;
+  if (!allowed.includes(file))
+    throw new Error(`${repo}:${file} was not reviewed for execution`);
+  return read(repo, file);
+}
 
 function paths(value: unknown, prefix = ""): string[] {
   const result = [prefix];
@@ -75,7 +160,8 @@ function evaluate<T = Settings>(
   expression: string,
   context: Record<string, unknown> = {},
 ): T {
-  const code = transpiler.transformSync(source.replaceAll("export ", ""));
+  // The VM is not a security sandbox, so only pass pinned, reviewed fragments
+  const code = transpiler.transformSync(source.replace(/^export /gm, ""));
   return JSON.parse(
     vm.runInNewContext(`${code}\nJSON.stringify(${expression})`, context, {
       timeout: 1000,
@@ -83,17 +169,20 @@ function evaluate<T = Settings>(
   );
 }
 
-function snippet(source: string, start: string, end: string): string {
+function snippet(source: string, start: string, end?: string): string {
   const begin = source.indexOf(start);
-  const finish = source.indexOf(end, begin);
+  const finish =
+    end === undefined
+      ? source.length
+      : source.indexOf(end, begin + start.length);
   if (begin < 0 || finish < 0)
     throw new Error(`Missing reviewed anchors: ${start}`);
   return source.slice(begin, finish);
 }
 
-async function save(
+function save(
   slug: string,
-  repo: string,
+  repo: Source,
   repository: string,
   id: string,
   areas: Areas,
@@ -111,20 +200,11 @@ async function save(
   };
   for (const [area, values] of Object.entries(areas))
     document[area] = [{ id, values }];
-  await Bun.write(
+  pending.set(
     path.join(dir, `${slug}.json`),
     JSON.stringify(document, null, 2) + "\n",
   );
-  const revision = Bun.spawnSync({
-    cmd: ["git", "-C", path.join(repos, repo), "rev-parse", "HEAD"],
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (revision.exitCode !== 0)
-    throw new Error(
-      `Cannot read ${repo} revision: ${revision.stderr.toString()}`,
-    );
-  const commit = revision.stdout.toString().trim();
+  const { commit } = sources[repo];
   const coverage: Record<string, Coverage> = {};
   for (const [area, values] of Object.entries(defaults)) {
     const declared = Object.keys(values).sort();
@@ -161,9 +241,9 @@ async function save(
   });
 }
 
-let source = await read("darkreader", "src/defaults.ts");
+let source = executableSource("darkreader", "src/defaults.ts");
 const dark = evaluate(
-  source.slice(source.indexOf("export const DEFAULT_COLORS")),
+  snippet(source, "export const DEFAULT_COLORS"),
   "DEFAULT_SETTINGS",
   {
     isMacOS: true,
@@ -181,12 +261,12 @@ const darkCustom = structuredClone(dark);
 const darkFixes: Settings = {};
 const darkTextFormats: Record<string, string[]> = {};
 const parseHelpers = snippet(
-  await read("darkreader", "src/generators/utils/parse.ts"),
+  executableSource("darkreader", "src/generators/utils/parse.ts"),
   "export function parseSitesFixesConfig",
   "// URL patterns",
 );
 const textHelpers = snippet(
-  await read("darkreader", "src/utils/text.ts"),
+  executableSource("darkreader", "src/utils/text.ts"),
   "export function parseArray",
   "export function formatArray",
 );
@@ -220,7 +300,7 @@ for (const [key, file, declaration, parser, formatter] of [
     "formatDetectorHints",
   ],
 ]) {
-  const source = await read("darkreader", `src/generators/${file}.ts`);
+  const source = executableSource("darkreader", `src/generators/${file}.ts`);
   const declarations = snippet(
     source,
     `const ${declaration}`,
@@ -280,7 +360,7 @@ darkCustom.customThemes.push({
 });
 const darkSyncPlain = structuredClone(darkCustom);
 darkSyncPlain.theme.stylesheet = `/* ${"sample ".repeat(1800)} */`;
-const syncProtocol = await read(
+const syncProtocol = executableSource(
   "darkreader",
   "src/background/utils/extension-api.ts",
 );
@@ -301,10 +381,10 @@ for (const [key, value] of Object.entries(darkSync)) {
   if (Buffer.byteLength(key + JSON.stringify(value), "utf8") > 8192)
     throw new Error(`Dark Reader sync item exceeds 8192 bytes: ${key}`);
 }
-const validator = (await read("darkreader", "src/utils/validation.ts")).replace(
-  /^import .*\n/gm,
-  "",
-);
+const validator = executableSource(
+  "darkreader",
+  "src/utils/validation.ts",
+).replace(/^import .*\n/gm, "");
 const validation = evaluate<{ errors: string[] }>(
   validator,
   "validateSettings(sample)",
@@ -324,7 +404,7 @@ if (validation.errors.length)
   throw new Error(
     `Dark Reader rejects sample: ${validation.errors.join(", ")}`,
   );
-await save(
+save(
   "darkreader",
   "darkreader",
   "https://github.com/darkreader/darkreader",
@@ -359,7 +439,7 @@ await save(
 );
 reviews.at(-1)!.text_formats = darkTextFormats;
 reviews.at(-1)!.field_schemas = checkSchemas(
-  await read("darkreader", "src/definitions.d.ts"),
+  read("darkreader", "src/definitions.d.ts"),
   {
     UserSettings: [darkCustom],
     Theme: [darkCustom.theme],
@@ -375,7 +455,7 @@ reviews
   .source_urls.push(
     `${reviews.at(-1)!.repository}/blob/${reviews.at(-1)!.commit}/src/definitions.d.ts`,
   );
-await Bun.write(
+pending.set(
   path.resolve(root, "../darkreader/sync-settings.json"),
   JSON.stringify(darkSyncPlain, null, 2) + "\n",
 );
@@ -384,8 +464,8 @@ reviews.at(-1)!.split_values = {
   area: "sync",
 };
 
-source = await read("stylus", "src/js/prefs.js");
-const constants = (await read("stylus", "src/js/consts.js")).match(
+source = executableSource("stylus", "src/js/prefs.js");
+const constants = executableSource("stylus", "src/js/consts.js").match(
   /^export const .*;.*$/gm,
 );
 if (!constants) throw new Error("Missing reviewed Stylus declarations");
@@ -404,7 +484,7 @@ stylusCustom["editor.options"] = {
   showCursorWhenSelecting: true,
 };
 stylusCustom.windowPosition = { left: 40, top: 50, width: 1100, height: 800 };
-await save(
+save(
   "stylus",
   "stylus",
   "https://github.com/openstyles/stylus",
@@ -439,16 +519,16 @@ reviews.at(-1)!.coverage.sync.declared_keys = Object.keys(stylus).sort();
 reviews.at(-1)!.coverage.sync.configured_keys =
   Object.keys(stylusCustom).sort();
 reviews.at(-1)!.coverage.sync.container = "settings";
-const styleSamples = await stylusStyles(path.join(repos, "stylus"));
-await Bun.write(
+const styleSamples = stylusStyles((file) => read("stylus", file));
+pending.set(
   path.resolve(root, "../stylus/styles.json"),
   JSON.stringify(styleSamples.styles, null, 2) + "\n",
 );
-await Bun.write(
+pending.set(
   path.resolve(root, "../stylus/stylus.js"),
   stylusScript.trim() + "\n",
 );
-await Bun.write(
+pending.set(
   path.resolve(root, "../stylus/runtime.toml"),
   [
     "# Set extension_dir to a matching unpacked Stylus package before applying",
@@ -475,14 +555,12 @@ reviews.at(-1)!.runtime_sample = {
   excluded_fields: styleSamples.excluded,
 };
 
-source = await read("SponsorBlock", "src/config.ts");
+source = executableSource("SponsorBlock", "src/config.ts");
 const sponsor = evaluate(
   snippet(source, "const syncDefaults =", "const Config ="),
   "({sync: syncDefaults, local: localDefaults})",
   {
-    CompileConfig: JSON.parse(
-      await read("SponsorBlock", "config.json.example"),
-    ),
+    CompileConfig: JSON.parse(read("SponsorBlock", "config.json.example")),
     SegmentListDefaultTab: { Segments: 0 },
     NoticeVisibilityMode: { FadedForAutoSkip: 3 },
     CategorySkipOption: { AutoSkip: 2, ManualSkip: 1, ShowOverlay: 0 },
@@ -566,7 +644,7 @@ sponsorCustom.local.skipRules = [
     ],
   },
 ];
-await save(
+save(
   "sponsorblock",
   "SponsorBlock",
   "https://github.com/ajayyy/SponsorBlock",
@@ -595,14 +673,14 @@ await save(
 reviews
   .at(-1)!
   .source_urls.push(
-    "https://github.com/ajayyy/maze-utils/blob/6b5b5be38f9db60d9bab70c1d3c196504578e552/src/config.ts",
+    `https://github.com/ajayyy/maze-utils/blob/${mazeUtils.commit}/${mazeUtils.file}`,
   );
 
 reviews.at(-1)!.field_schemas = {
-  ...checkSchemas(await read("SponsorBlock", "src/config.ts"), {
+  ...checkSchemas(read("SponsorBlock", "src/config.ts"), {
     CustomConfiguration: Object.values(sponsorCustom.local.skipProfiles),
   }),
-  ...checkSchemas(await read("SponsorBlock", "maze-utils/src/config.ts"), {
+  ...checkSchemas(await readMazeUtils(), {
     Keybind: Object.entries(sponsorCustom.sync)
       .filter(
         ([key, value]) =>
@@ -613,7 +691,7 @@ reviews.at(-1)!.field_schemas = {
 };
 
 // Obsidian's serializer groups the in-memory settings into native sync keys
-source = await read("obsidian-clipper", "src/utils/storage-utils.ts");
+source = executableSource("obsidian-clipper", "src/utils/storage-utils.ts");
 const clipper = evaluate(
   snippet(
     source,
@@ -725,7 +803,7 @@ const clipperLocal = {
   domains: {},
   provider_presets: { version: "sample" },
 };
-await save(
+save(
   "obsidian-clipper",
   "obsidian-clipper",
   "https://github.com/obsidianmd/obsidian-clipper",
@@ -756,7 +834,7 @@ await save(
   ],
 );
 const templatePath = path.resolve(root, "../obsidian-clipper/templates.json");
-await Bun.write(templatePath, JSON.stringify(templates, null, 2) + "\n");
+pending.set(templatePath, JSON.stringify(templates, null, 2) + "\n");
 reviews.at(-1)!.compressed_templates = {
   plain_sample: "obsidian-clipper/templates.json",
   encoding: "lz-string-utf16-chunks",
@@ -764,7 +842,7 @@ reviews.at(-1)!.compressed_templates = {
 };
 
 reviews.at(-1)!.field_schemas = checkSchemas(
-  await read("obsidian-clipper", "src/types/types.ts"),
+  read("obsidian-clipper", "src/types/types.ts"),
   {
     Settings: [clipperCustom],
     ReaderSettings: [clipperCustom.readerSettings],
@@ -776,8 +854,8 @@ reviews.at(-1)!.field_schemas = checkSchemas(
   },
 );
 
-const res = await resConfiguration(path.join(repos, "RES"));
-await save(
+const res = resConfiguration((file) => read("RES", file));
+save(
   "res",
   "RES",
   "https://github.com/honestbleeps/Reddit-Enhancement-Suite",
@@ -805,8 +883,8 @@ await save(
 reviews.at(-1)!.positional_tables = res.tables;
 reviews.at(-1)!.filter_cases = res.filterCases;
 
-const ghostery = await ghosteryConfiguration(path.join(repos, "ghostery"));
-await save(
+const ghostery = ghosteryConfiguration((file) => read("ghostery", file));
+save(
   "ghostery",
   "ghostery",
   "https://github.com/ghostery/ghostery-extension",
@@ -832,7 +910,7 @@ await save(
 reviews.at(-1)!.record_schemas = ghostery.recordSchemas;
 reviews.at(-1)!.managed_policy_sample = "ghostery/managed.toml";
 const managedDir = path.resolve(root, "../ghostery");
-await Bun.write(
+pending.set(
   path.join(managedDir, "managed.json"),
   JSON.stringify(
     {
@@ -844,7 +922,7 @@ await Bun.write(
     2,
   ) + "\n",
 );
-await Bun.write(
+pending.set(
   path.join(managedDir, "managed.toml"),
   [
     "# Render with tweezle policy render examples/extensions/ghostery/managed.toml",
@@ -860,8 +938,9 @@ await Bun.write(
   ].join("\n"),
 );
 
-await Bun.write(
+pending.set(
   path.join(root, "reviews.json"),
   JSON.stringify({ reviews }, null, 2) + "\n",
 );
+for (const [file, content] of pending) await Bun.write(file, content);
 console.log(`Generated ${reviews.length} source-pinned samples`);

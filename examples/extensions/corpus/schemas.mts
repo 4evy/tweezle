@@ -1,17 +1,41 @@
 import { parse } from "@babel/parser";
 
-type Value = Record<string, any>;
+import type {
+  TSInterfaceDeclaration,
+  TSTypeAliasDeclaration,
+  TSTypeElement,
+} from "@babel/types";
+import { propertyName } from "./literals.mts";
+
+export function schemaFields(members: readonly TSTypeElement[]): string[] {
+  const fields: string[] = [];
+  for (const member of members) {
+    if (
+      member.type !== "TSPropertySignature" &&
+      member.type !== "TSMethodSignature"
+    )
+      continue;
+    const key = member.computed ? undefined : propertyName(member.key);
+    if (key !== undefined) fields.push(key);
+  }
+  return fields;
+}
 
 // Compare sample objects with interface fields, including optional properties
 export function checkSchemas(
   source: string,
-  examples: Record<string, Value[]>,
+  examples: Record<string, object[]>,
 ) {
   const ast = parse(source, { sourceType: "module", plugins: ["typescript"] });
-  const declarations = new Map<string, any>();
+  const declarations = new Map<
+    string,
+    TSInterfaceDeclaration | TSTypeAliasDeclaration
+  >();
   for (const statement of ast.program.body) {
-    let node: any = statement;
-    if (node.type === "ExportNamedDeclaration") node = node.declaration;
+    const node =
+      statement.type === "ExportNamedDeclaration"
+        ? statement.declaration
+        : statement;
     if (
       node?.type === "TSInterfaceDeclaration" ||
       node?.type === "TSTypeAliasDeclaration"
@@ -25,12 +49,13 @@ export function checkSchemas(
   for (const [name, values] of Object.entries(examples)) {
     const declaration = declarations.get(name);
     const members =
-      declaration?.body?.body ?? declaration?.typeAnnotation?.members;
+      declaration?.type === "TSInterfaceDeclaration"
+        ? declaration.body.body
+        : declaration?.typeAnnotation.type === "TSTypeLiteral"
+          ? declaration.typeAnnotation.members
+          : undefined;
     if (!members) throw new Error(`Missing object schema ${name}`);
-    const fields: string[] = members
-      .map((member: any) => member.key?.name ?? member.key?.value)
-      .filter(Boolean)
-      .sort();
+    const fields = schemaFields(members).sort();
     const configured = [
       ...new Set(values.flatMap((value) => Object.keys(value))),
     ].sort();
