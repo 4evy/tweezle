@@ -13,8 +13,8 @@ import (
 
 //go:embed metadata.json
 var embeddedMetadata []byte
-var catalog = settings.Load(embeddedMetadata)
 var uuid = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+var catalog = settings.LoadCompiled(embeddedMetadata)
 
 func validWorkspaceID(id string) bool {
 	if len(id) == 38 && id[0] == '{' && id[len(id)-1] == '}' {

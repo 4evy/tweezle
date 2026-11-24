@@ -12,7 +12,7 @@ import (
 
 //go:embed metadata.json
 var embeddedMetadata []byte
-var catalog = settings.Load(embeddedMetadata)
+var catalog = settings.LoadCompiled(embeddedMetadata)
 
 type Config struct {
 	Preferences    map[string]any   `toml:"preferences"`

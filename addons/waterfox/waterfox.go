@@ -3,21 +3,24 @@
 package waterfox
 
 import (
+	"bytes"
 	_ "embed"
-	json "encoding/json/v2"
 	"fmt"
 	"maps"
 
 	"github.com/4evy/tweezle/addons/firefox"
 	"github.com/4evy/tweezle/addons/foundation/firefox/settings"
+	jsonutil "github.com/4evy/tweezle/internal/json"
 )
 
 //go:embed metadata.json
 var embeddedMetadata []byte
-var catalog = settings.Load(embeddedMetadata)
+var catalog = settings.LoadCompiled(embeddedMetadata)
 
 //go:embed appearance.json
 var embeddedAppearance []byte
+
+var appearance = loadAppearance()
 
 type Config struct {
 	Preferences map[string]any    `toml:"preferences"`
@@ -27,10 +30,10 @@ type Config struct {
 func Addon() firefox.ProviderAddon { return firefox.NewProviderAddon[Config]("waterfox") }
 func (Config) Variant() string     { return "waterfox" }
 func Metadata() settings.Catalog   { return settings.Load(embeddedMetadata) }
-func appearance() map[string]map[string]map[string]bool {
-	var result map[string]map[string]map[string]bool
-	if err := json.Unmarshal(embeddedAppearance, &result); err != nil {
-		panic(err)
+func loadAppearance() map[string]map[string]map[string]bool {
+	result, err := jsonutil.Strict.Decode[map[string]map[string]map[string]bool](bytes.NewReader(embeddedAppearance))
+	if err != nil {
+		panic(fmt.Errorf("decode Waterfox appearance: %w", err))
 	}
 	return result
 }
@@ -39,9 +42,8 @@ func (config Config) values() (map[string]any, error) {
 	if values == nil {
 		values = map[string]any{}
 	}
-	options := appearance()
 	for group, choice := range config.Appearance {
-		choices, ok := options[group]
+		choices, ok := appearance[group]
 		if !ok {
 			return nil, fmt.Errorf("unknown Waterfox appearance group %q", group)
 		}

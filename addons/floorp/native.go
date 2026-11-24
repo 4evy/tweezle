@@ -83,10 +83,7 @@ func encodeWorkspaceStore(preferences map[string]any) error {
 }
 
 func validateNative(values map[string]any) error {
-	for name, fields := range map[string][]string{
-		"floorp.keyboardshortcut.config": {"shortcuts"},
-		"floorp.workspaces.v4.store":     {"defaultID", "data", "order"},
-	} {
+	for name, schema := range nativeSchemas {
 		raw, present := values[name]
 		if !present {
 			continue
@@ -99,7 +96,7 @@ func validateNative(values map[string]any) error {
 		if err := json.Unmarshal([]byte(text), &object); err != nil {
 			return err
 		}
-		if err := nativeSchema(name, fields).Validate(object, name); err != nil {
+		if err := schema.Validate(object, name); err != nil {
 			return err
 		}
 		if name == "floorp.workspaces.v4.store" {
@@ -126,11 +123,28 @@ func validateNative(values map[string]any) error {
 	return nil
 }
 
+var nativeSchemas = loadNativeSchemas()
+
+func loadNativeSchemas() map[string]*settings.CompiledSchema {
+	metadata := Metadata()
+	schemas := make(map[string]*settings.CompiledSchema, 2)
+	for name, required := range map[string][]string{
+		"floorp.keyboardshortcut.config": {"shortcuts"},
+		workspaceStorePreference:         {"defaultID", "data", "order"},
+	} {
+		schema, err := nativeSchema(name, *metadata.Preferences[name].Schema, required).Compile()
+		if err != nil {
+			panic(fmt.Errorf("compile native Floorp schema for %s: %w", name, err))
+		}
+		schemas[name] = schema
+	}
+	return schemas
+}
+
 // Validate known native fields using the same source-backed schema as config
 // patches. Native stores need complete records but may have newer fields that
 // this version must preserve rather than reject
-func nativeSchema(name string, required []string) settings.Schema {
-	schema := *Metadata().Preferences[name].Schema
+func nativeSchema(name string, schema settings.Schema, required []string) settings.Schema {
 	allowNativeFields(map[string]any(schema))
 	schema["required"] = required
 	properties := schema["properties"].(map[string]any)

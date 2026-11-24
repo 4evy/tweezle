@@ -19,7 +19,7 @@ import (
 
 //go:embed metadata.json
 var embeddedMetadata []byte
-var catalog = settings.Load(embeddedMetadata)
+var catalog = settings.LoadCompiled(embeddedMetadata)
 
 type Config struct {
 	Preferences  map[string]any `toml:"preferences"`
@@ -41,12 +41,12 @@ func (config *Config) ResolvePaths(directory string) {
 func (config Config) Validate() error {
 	var errs []error
 	for name := range config.Preferences {
-		if catalog.Preferences[name].Locked {
+		if locked, _ := catalog.Lookup(name); locked {
 			errs = append(errs, fmt.Errorf("%s is locked by LibreWolf; use override_file with unlock and overrides, or locked", name))
 		}
 	}
 	for name := range config.Overrides {
-		if catalog.Preferences[name].Locked && !slices.Contains(config.Unlock, name) {
+		if locked, _ := catalog.Lookup(name); locked && !slices.Contains(config.Unlock, name) {
 			errs = append(errs, fmt.Errorf("%s is locked by LibreWolf; include it in unlock before using overrides", name))
 		}
 	}
@@ -61,7 +61,7 @@ func (config Config) Validate() error {
 		}
 	}
 	for _, name := range config.Unlock {
-		if _, ok := catalog.Preferences[name]; !ok {
+		if _, ok := catalog.Lookup(name); !ok {
 			errs = append(errs, fmt.Errorf("unknown unlock preference %q", name))
 		}
 	}
