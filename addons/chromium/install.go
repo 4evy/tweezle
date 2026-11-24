@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 
+	foundation "github.com/4evy/tweezle/addons/foundation/chrome"
 	"github.com/4evy/tweezle/addons/foundation/chrome/extensions"
 	"github.com/4evy/tweezle/addons/foundation/chrome/ublock"
 	"github.com/4evy/tweezle/internal/chromiumflags"
@@ -50,6 +51,7 @@ type InstallOptions struct {
 
 	extraLauncherFlags []string
 	profileSelectors   [2]string
+	preparedSites      []foundation.PreparedSite
 	launcherCommand    []string
 	extensionIDAliases map[string]string
 	liteManifestPath   string
@@ -82,6 +84,12 @@ func (browser Browser) Install(
 	options.ProfileDir, options.profileSelectors, err = chromiumflags.Profile(profile)
 	if err != nil {
 		return err
+	}
+	if options.ApplySettings && options.ProfileDir != "" {
+		options.preparedSites, err = foundation.PrepareSites(browser.Config.Sites)
+		if err != nil {
+			return err
+		}
 	}
 	fixed := slices.Concat(browser.Config.Flags, options.Flags)
 	if options.Mode == ModeLinux {
@@ -276,7 +284,7 @@ func (browser Browser) applyInstallSettings(
 	if options.ProfileDir == "" {
 		return nil
 	}
-	return browser.ApplyProfileSettings(ctx, ApplyOptions{
+	return browser.applyPreparedProfileSettings(ctx, ApplyOptions{
 		BrowserExecutable:  launcher,
 		ExtensionRoot:      options.Root,
 		liteManifestPath:   options.liteManifestPath,
@@ -285,7 +293,7 @@ func (browser Browser) applyInstallSettings(
 		SettingsSource:     options.SettingsSource,
 		ExtensionIDAliases: options.extensionIDAliases,
 		Input:              options.Input,
-	})
+	}, options.preparedSites)
 }
 
 func (browser Browser) installMacOS(

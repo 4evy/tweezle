@@ -13,6 +13,7 @@ import (
 	"slices"
 
 	"github.com/4evy/tweezle"
+	"github.com/4evy/tweezle/addons/foundation/sites"
 	jsonutil "github.com/4evy/tweezle/internal/json"
 )
 
@@ -27,6 +28,7 @@ func Addon(providers ...ProviderAddon) tweezle.Addon {
 			if err != nil {
 				return nil, err
 			}
+			sites.ResolvePaths(config.Sites, source.Directory)
 			for mode, paths := range config.Paths {
 				if paths.PoliciesFile != "" && !filepath.IsAbs(expandPath(paths.PoliciesFile)) {
 					paths.PoliciesFile = filepath.Join(source.Directory, paths.PoliciesFile)

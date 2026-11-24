@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/4evy/tweezle"
+	"github.com/4evy/tweezle/addons/foundation/sites"
 	"github.com/4evy/tweezle/internal/flatpak"
 	xdgdirs "github.com/4evy/tweezle/internal/xdg"
 )
@@ -27,6 +28,7 @@ type Config struct {
 	Policies          map[string]any            `toml:"policies"`
 	Extensions        []ExtensionConfig         `toml:"extensions"`
 	ExtensionSettings map[string]map[string]any `toml:"extension_settings"`
+	Sites             []sites.Site              `toml:"sites"`
 }
 
 type FlatpakConfig = flatpak.Config
@@ -92,6 +94,7 @@ func (config Config) Validate() error {
 		errs = append(errs, errors.New("firefox.macos.launcher_path must be relative to app_dir"))
 	}
 	errs = append(errs, validatePreferences(config.Preferences))
+	errs = append(errs, sites.Validate(config.Sites))
 	ids := map[string]bool{}
 	for _, extension := range config.Extensions {
 		if strings.TrimSpace(extension.ID) == "" || extension.ID == "*" || ids[extension.ID] {
@@ -119,6 +122,10 @@ func (config Config) Validate() error {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
+}
+
+func (module Module) ValidateFiles() error {
+	return sites.ValidateFiles(module.Config.Sites)
 }
 
 // Return the decoded path of a local file URL, or an empty path for HTTPS

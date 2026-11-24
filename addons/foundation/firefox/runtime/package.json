@@ -1,0 +1,8 @@
+{
+  "name": "tweezle-firefox-site-runtime",
+  "private": true,
+  "scripts": {
+    "build": "tsc --project tsconfig.json && bun --bun biome format --write generated",
+    "check": "tsc --project tsconfig.json --noEmit"
+  }
+}

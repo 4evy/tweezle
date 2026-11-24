@@ -123,6 +123,67 @@ that launcher for configured flags and unpacked Chromium extensions. Without a
 file argument, Tweezle checks `TWEEZLE_CONFIG`, `./tweezle.toml`, then user and
 system configuration directories.
 
+## Site data
+
+Add `[[browser.sites]]` entries to a Chromium configuration, or
+`[[firefox.sites]]` entries to a Firefox configuration. These manage stored
+website data, independently of cookie permission rules:
+
+```toml
+[[browser.sites]]
+origin = "https://example.com"
+local_storage = { theme = "dark" }
+
+[[browser.sites.cookies]]
+name = "theme"
+value = "dark"
+expires = 1798761600 # 2027-01-01 UTC, choose a future date within browser limits
+same_site = "lax"
+
+[[browser.sites.indexed_db]]
+name = "preferences"
+version = 1
+
+[[browser.sites.indexed_db.stores]]
+name = "settings"
+
+[[browser.sites.indexed_db.stores.records]]
+key = "theme"
+value = { mode = "dark" }
+```
+
+Run `tweezle apply` or `tweezle profile apply` with the browser closed.
+Tweezle runs the installed browser against staged storage, without contacting
+the configured websites. It commits site data only after every site succeeds
+and the browser exits cleanly. Failed scripts discard the staged changes.
+
+Origins must be exact HTTP(S) origins, without a trailing slash or default
+port. Only first-party, default-container data is managed. Partitioned storage,
+Firefox containers, and in-memory session storage are not configuration targets.
+Cookie writes require an explicit persistent expiry in Unix seconds. Native
+browser expiry limits apply. Omitting `domain` creates a host-only cookie. An
+explicit domain also affects its subdomains.
+
+Unspecified keys and records are preserved. Use `local_storage_remove`,
+`clear_local_storage`, cookie `remove` or `clear_cookies`, and IndexedDB record
+`delete`, store `clear`, or database `delete` for explicit removals. Increase
+the database version when adding indexes or adding/deleting stores. Prefer
+explicit record keys, because generated keys create new records on each apply.
+
+The [site settings model](addons/foundation/sites/sites.go) and
+[Nix options](nix/modules/settings/sites.nix) define the remaining fields.
+Optional `script` files run an async JavaScript body after declarative writes,
+with native `localStorage`, `indexedDB`, and `caches`. Await every write.
+`files` maps names to JSON files exposed as `input.files`. Paths resolve
+relative to the TOML file. Scripts cannot fetch website resources. CacheStorage
+requires a secure context. Use `timeout_seconds` to set a per-site execution
+deadline, independently of browser startup and shutdown.
+
+In Nix, use `settings.chromium.sites` or `settings.firefox.sites`. The embedded
+browser code is authored in typed TypeScript subprojects. After editing it, run
+`bun run sites:generate` to compile the JavaScript embedded by Go, then
+`bun run typecheck`. Ordinary Go builds do not require a TypeScript toolchain.
+
 ## Nix
 
 `programs.tweezle.settings` configures the default browser setup. Choose

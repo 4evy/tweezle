@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	foundation "github.com/4evy/tweezle/addons/foundation/chrome"
 	"github.com/4evy/tweezle/addons/foundation/chrome/extensions"
 	"github.com/4evy/tweezle/addons/foundation/chrome/profile"
 	"github.com/4evy/tweezle/addons/foundation/chrome/ublock"
@@ -176,6 +177,14 @@ func (browser Browser) ApplyProfileSettings(
 	ctx context.Context,
 	options ApplyOptions,
 ) error {
+	entries, err := foundation.PrepareSites(browser.Config.Sites)
+	if err != nil {
+		return err
+	}
+	return browser.applyPreparedProfileSettings(ctx, options, entries)
+}
+
+func (browser Browser) applyPreparedProfileSettings(ctx context.Context, options ApplyOptions, entries []foundation.PreparedSite) error {
 	browser.addLaunchContributions(browser.Config.Flags)
 	if options.ProfileDir == "" {
 		return errors.New(profileDirectoryRequiredMessage)
@@ -206,6 +215,9 @@ func (browser Browser) ApplyProfileSettings(
 				)
 			},
 		)
+	}
+	if err := browser.applySites(ctx, options, entries); err != nil {
+		return err
 	}
 	for _, patchSet := range browser.browserDataPatchSets() {
 		if err := patchSet.run(options.ProfileDir); err != nil {

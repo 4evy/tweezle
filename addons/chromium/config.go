@@ -12,6 +12,7 @@ import (
 	"github.com/4evy/tweezle"
 	"github.com/4evy/tweezle/addons/foundation/chrome/extensions"
 	"github.com/4evy/tweezle/addons/foundation/chrome/ublock"
+	"github.com/4evy/tweezle/addons/foundation/sites"
 	"github.com/4evy/tweezle/internal/flatpak"
 	xdgdirs "github.com/4evy/tweezle/internal/xdg"
 	"golang.org/x/net/http/httpguts"
@@ -61,6 +62,7 @@ type BrowserConfig struct {
 	Paths              map[string]ModePaths     `toml:"paths"`
 	Preferences        PreferenceDefaultsConfig `toml:"preferences"`
 	ExtensionIDAliases map[string]string        `toml:"extension_id_aliases"`
+	Sites              []sites.Site             `toml:"sites"`
 }
 
 type FlatpakConfig = flatpak.Config
@@ -117,6 +119,7 @@ func (config Config) Validate() error {
 		config.validateUBlockCapability(),
 		config.validateExtensionLoading(),
 		config.Browser.Preferences.Cookies.Validate(),
+		sites.Validate(config.Browser.Sites),
 		extensions.ValidateIDAliases(config.Browser.ExtensionIDAliases),
 		validateUniquePaths(
 			"extension_settings.files",

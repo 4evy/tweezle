@@ -50,6 +50,7 @@ in
       '';
     }
   )) "Paths for linux and macos; home, config_home, and data_home templates expand at runtime.";
+  sites = import ../../../../nix/modules/settings/sites.nix { inherit schema; };
   preferences = optional (types.attrsOf (
     types.oneOf [
       types.bool

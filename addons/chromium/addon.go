@@ -11,6 +11,7 @@ import (
 	"slices"
 
 	"github.com/4evy/tweezle"
+	"github.com/4evy/tweezle/addons/foundation/sites"
 )
 
 // Addon registers the existing Chromium TOML layout without selecting products.
@@ -26,6 +27,7 @@ func Addon(providers ...ProviderAddon) tweezle.Addon {
 				return nil, err
 			}
 			config.resolveUBlockPaths(source.Directory)
+			sites.ResolvePaths(config.Browser.Sites, source.Directory)
 			for mode, paths := range config.Browser.Paths {
 				paths.PoliciesFile = resolveConfigPath(source.Directory, paths.PoliciesFile)
 				config.Browser.Paths[mode] = paths
@@ -50,6 +52,7 @@ func (module Module) Validate() error {
 func (module Module) ValidateFiles() error {
 	return errors.Join(
 		ValidateExtensionSettingsFiles(module.Config.ExtensionSettings.Files),
+		sites.ValidateFiles(module.Config.Browser.Sites),
 	)
 }
 

@@ -100,11 +100,11 @@ func (module Module) install(ctx context.Context, options tweezle.InstallOptions
 		return err
 	}
 	if options.ApplySettings && profileDir != "" {
-		if err := module.applyProfile(ctx, profileDir, preferences); err != nil {
+		if err := module.applyProfileWithCommand(ctx, profileDir, preferences, command); err != nil {
 			return err
 		}
-	} else if options.ApplySettings && (len(preferences) > 0 || len(config.Providers) > 0) {
-		return errors.New("firefox preferences require a configured profile_dir or --profile-dir")
+	} else if options.ApplySettings && (len(preferences) > 0 || len(config.Providers) > 0 || len(config.Sites) > 0) {
+		return errors.New("firefox preferences and site data require a configured profile_dir or --profile-dir")
 	}
 	if policyPath != "" {
 		var output bytes.Buffer

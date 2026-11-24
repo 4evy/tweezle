@@ -63,6 +63,11 @@ in
       runtimeFiles = lib.lists.concatMap (
         entry: [ entry.script ] ++ lib.attrsets.attrValues (lib.trivial.defaultTo { } (entry.files or null))
       ) runtime;
+      siteFiles = lib.lists.concatMap (
+        entry:
+        lib.lists.optional ((entry.script or null) != null) entry.script
+        ++ lib.attrsets.attrValues (lib.trivial.defaultTo { } (entry.files or null))
+      ) (lib.trivial.defaultTo [ ] (settings.chromium.sites or null));
     in
-    lib.lists.all lib.types.pathInStore.check (files ++ runtimeFiles ++ settingsFiles);
+    lib.lists.all lib.types.pathInStore.check (files ++ runtimeFiles ++ settingsFiles ++ siteFiles);
 }

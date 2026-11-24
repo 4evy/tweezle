@@ -98,6 +98,8 @@ in
         Declarative browser preference mutations.
       '';
 
+  sites = import ../../../../nix/modules/settings/sites.nix { inherit schema; };
+
   extension_id_aliases = optional (types.attrsOf schema.extensionId) ''
     Mapping from configured extension IDs to the IDs of installed variants.
   '';

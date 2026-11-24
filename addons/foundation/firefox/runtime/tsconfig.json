@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024", "DOM"],
+    "module": "ES2022",
+    "moduleDetection": "legacy",
+    "strict": true,
+    "types": [],
+    "outDir": "generated",
+    "newLine": "lf"
+  },
+  "files": ["script.ts"]
+}

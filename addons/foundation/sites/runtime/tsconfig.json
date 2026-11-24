@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "ES2022",
+    "moduleDetection": "legacy",
+    "lib": ["ES2024", "DOM"],
+    "types": [],
+    "strict": true,
+    "noEmitOnError": true,
+    "outDir": "generated"
+  },
+  "include": ["apply.ts"]
+}
