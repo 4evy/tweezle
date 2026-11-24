@@ -462,10 +462,7 @@ func (options *applyOptions) run(
 	if err != nil {
 		return err
 	}
-	profileDir := options.ProfileDir
-	if profileDir == "" {
-		profileDir = target.ProfileDir
-	}
+	profileDir := cmp.Or(options.ProfileDir, target.ProfileDir)
 	if !options.SkipProfile && profileDir == "" &&
 		(options.InputPath != "" || len(options.ExtensionSettings) > 0) {
 		return fmt.Errorf(
@@ -530,10 +527,7 @@ func (options *profileOptions) run(
 	if err != nil {
 		return err
 	}
-	profileDir := options.ProfileDir
-	if profileDir == "" {
-		profileDir = target.ProfileDir
-	}
+	profileDir := cmp.Or(options.ProfileDir, target.ProfileDir)
 	if profileDir == "" {
 		return fmt.Errorf(
 			"no profile is configured for %s; configure a profile path or pass --profile-dir",
