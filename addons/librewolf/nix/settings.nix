@@ -9,8 +9,8 @@ in
   inherit preferences;
   override_file = schema.optionalString ''
     LibreWolf's actual librewolf.overrides.cfg destination. Required for
-    defaults, overrides, locked, or unlock; applies to every profile loaded
-    by that installation. Existing content outside the marked block survives.
+    defaults, overrides, locked, or unlock; shared by profiles that resolve
+    to this path. Existing content outside the marked block survives.
     Supports home and config_home templates. Choose the installation's path.
   '';
   defaults = preferences // {

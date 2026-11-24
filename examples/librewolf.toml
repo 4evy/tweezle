@@ -8,7 +8,7 @@ profile_dir = "${home}/.librewolf/your-profile"
 profile_dir = "${home}/Library/Application Support/LibreWolf/Profiles/your-profile"
 
 [firefox.librewolf]
-# This installation-wide file is read by every LibreWolf profile
+# This file is shared by all LibreWolf profiles that resolve to this path
 # XDG and Flatpak installations use different override paths
 # See https://librewolf.net/docs/settings/
 override_file = "${home}/.librewolf/librewolf.overrides.cfg"
