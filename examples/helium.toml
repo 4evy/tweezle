@@ -84,14 +84,17 @@ noise = true
 # crash_reporting = "ask" # disabled | ask | automatic
 
 # Service choices remain opt-in, including consent; enable only those you want
-# A custom service origin must be HTTPS or localhost; empty restores the default
+# Use an absolute URL with HTTPS or a loopback host. Empty restores the default
 # [browser.helium.services]
 # enabled = true
 # user_consented = true
+# Helium's proxy does not route Tweezle's separate HTTP downloads
 # extension_proxy = true
 # bangs = true
 # spellcheck_files = true
+# Browser and component update checks depend on the build and component schema
 # browser_updates = true
+# uBlock asset fetching is separate from update checks
 # ublock_assets = true
 # origin_override = "https://helium-services.example.test"
 

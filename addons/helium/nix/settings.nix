@@ -17,11 +17,17 @@ in
   services = optionalSubmodule {
     enabled = optionalBool "Allow Helium services globally.";
     user_consented = optionalBool "Record the user's consent to Helium services.";
-    origin_override = optionalString "Custom HTTPS or localhost Helium services origin.";
-    extension_proxy = optionalBool "Use Helium's privacy-preserving extension proxy.";
+    origin_override = optionalString ''
+      Absolute URL using HTTPS or a loopback host. An empty value restores the
+      default.
+    '';
+    extension_proxy = optionalBool "Proxy extension downloads made by Helium. Does not affect Tweezle's HTTP requests.";
     bangs = optionalBool "Fetch and enable Helium's native search bangs.";
     spellcheck_files = optionalBool "Allow Helium to fetch spellcheck dictionaries.";
-    browser_updates = optionalBool "Allow Helium browser or component update checks.";
+    browser_updates = optionalBool ''
+      Allow browser update checks where supported by the build. Component
+      update checks also require acceptance of the relevant services schema.
+    '';
     ublock_assets = optionalBool "Allow Helium to update its bundled uBlock assets.";
   } "Helium-only service controls.";
 

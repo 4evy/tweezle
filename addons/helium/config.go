@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	heliumInvalidServicesOriginError       = "browser.helium.services.origin_override must be HTTPS or localhost"
+	heliumInvalidServicesOriginError       = "browser.helium.services.origin_override must be an absolute URL using HTTPS or a loopback host"
 	heliumSetUserColorFlagPrefix           = "--set-user-color="
 	heliumRGBComponentSeparator            = ","
 	heliumRGBComponentCount                = 3
@@ -158,7 +158,7 @@ func ValidServicesOrigin(value string) bool {
 		return true
 	}
 	parsed, err := url.Parse(value)
-	if err != nil || parsed.Host == "" {
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return false
 	}
 	if strings.EqualFold(parsed.Scheme, "https") {
