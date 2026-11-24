@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/zen-browser/desktop",
-  "revision": "185e856f68a451dc71988e988bc080c56452ea66",
+  "revision": "300f9292ddbaaebf24626b4a7451e5426a11d3d8",
   "preferences": {
     "browser.sessionstore.max_windows_undo": {
       "type": "integer",
@@ -9,10 +9,6 @@
     "browser.urlbar.shortcuts.workspaces": {
       "type": "boolean",
       "source": "prefs/zen/zen-urlbar.yaml"
-    },
-    "image.jxl.enabled": {
-      "type": "boolean",
-      "source": "prefs/zen/media.yaml"
     },
     "media.eme.enabled": {
       "type": "boolean",
@@ -94,10 +90,6 @@
       "type": "boolean",
       "source": "prefs/zen/sync.yaml"
     },
-    "svg.context-properties.content.enabled": {
-      "type": "boolean",
-      "source": "prefs/zen/media.yaml"
-    },
     "widget.gtk.rounded-bottom-corners.enabled": {
       "type": "boolean",
       "source": "prefs/zen/gtk.yaml"
@@ -129,6 +121,11 @@
     "zen.boosts.invert-channel-floor": {
       "type": "integer",
       "source": "prefs/zen/boosts.yaml"
+    },
+    "zen.containers.create-default-identities": {
+      "type": "boolean",
+      "default": false,
+      "source": "prefs/zen/workspaces.yaml"
     },
     "zen.ctrlTab.show-pending-tabs": {
       "type": "boolean",
@@ -194,14 +191,6 @@
       "type": "string",
       "source": "prefs/zen/mods.yaml"
     },
-    "zen.keyboard.shortcuts.disable-mainkeyset-clear": {
-      "type": "boolean",
-      "source": "prefs/zen/kbs.yaml"
-    },
-    "zen.keyboard.shortcuts.version": {
-      "type": "integer",
-      "source": "prefs/zen/kbs.yaml"
-    },
     "zen.library.enabled": {
       "type": "boolean",
       "source": "prefs/zen/library.yaml"
@@ -229,14 +218,6 @@
     "zen.mediacontrols.enabled": {
       "type": "boolean",
       "source": "prefs/zen/zen.yaml"
-    },
-    "zen.mods.auto-update": {
-      "type": "boolean",
-      "source": "prefs/zen/mods.yaml"
-    },
-    "zen.mods.auto-update-days": {
-      "type": "integer",
-      "source": "prefs/zen/mods.yaml"
     },
     "zen.mods.updated-value-observer": {
       "type": "boolean",

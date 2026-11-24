@@ -10,10 +10,10 @@ profile_dir = "${home}/Library/Application Support/zen/Profiles/your-profile"
 [firefox.zen.preferences]
 "zen.view.compact.enable-at-startup" = true
 "zen.view.compact.hide-toolbar" = true
+"zen.containers.create-default-identities" = true
 "zen.workspaces.force-container-workspace" = true
 "zen.workspaces.separate-essentials" = true
 "zen.theme.dark-mode-bias" = 0.3
-"zen.mods.auto-update" = false
 
 # Open Zen once before using its native shortcut and workspace files
 # These shortcuts require the version 21 format shipped by Zen 1.23.1b
