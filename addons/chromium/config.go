@@ -98,6 +98,9 @@ func LoadConfig(path string, providers ...ProviderAddon) (Config, error) {
 	if len(loaded.Modules) == 0 {
 		return Config{}, errors.New("browser.executable_name is required")
 	}
+	if err := loaded.Modules[0].Module.(Module).ValidateFiles(); err != nil {
+		return Config{}, err
+	}
 	return loaded.Modules[0].Module.(Module).Config, nil
 }
 

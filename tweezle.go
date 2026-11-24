@@ -30,9 +30,10 @@ type Source struct {
 	Directory string
 }
 
-// Module implements an addon's validated configuration and operations. Run
-// returns false for operations it does not recognize. Addons handle common
-// operations and may define additional operation types
+// Module implements an addon's structural validation and operations. Run
+// returns false for operations it does not recognize. Modules that reference
+// files can implement ValidateFiles for explicit configuration validation
+// and must check inputs needed by an operation before making changes
 type Module interface {
 	Validate() error
 	Run(context.Context, any) (bool, error)
@@ -61,9 +62,9 @@ type Config struct {
 
 var namePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
-// LoadConfig reads and validates TOML using only the supplied addons. Decoders
-// receive an absolute Source for resolving configuration-relative paths.
-// Loading does not execute module operations
+// LoadConfig reads TOML and validates its structure using the supplied addons.
+// Decoders receive an absolute Source for resolving relative paths. Use
+// Config.Validate to check referenced files without running an operation
 func LoadConfig(path string, addons ...Addon) (Config, error) {
 	path, err := filepath.Abs(path)
 	if err != nil {
@@ -141,14 +142,19 @@ func DecodeConfig(data []byte, source Source, addons ...Addon) (Config, error) {
 		}
 		config.Modules = append(config.Modules, Binding{Name: addon.Name, Module: module})
 	}
-	if err := config.Validate(); err != nil {
+	if err := config.validate(false); err != nil {
 		return Config{}, err
 	}
 	return config, nil
 }
 
-// Validate collects module validation errors without running operations
+// Validate checks the configuration and referenced files without running
+// operations
 func (config Config) Validate() error {
+	return config.validate(true)
+}
+
+func (config Config) validate(checkFiles bool) error {
 	var errs []error
 	names := map[string]bool{}
 	for _, binding := range config.Modules {
@@ -163,15 +169,22 @@ func (config Config) Validate() error {
 		if err := binding.Module.Validate(); err != nil {
 			errs = append(errs, fmt.Errorf("addon %s: %w", binding.Name, err))
 		}
+		if checkFiles {
+			if module, ok := binding.Module.(interface{ ValidateFiles() error }); ok {
+				if err := module.ValidateFiles(); err != nil {
+					errs = append(errs, fmt.Errorf("addon %s: %w", binding.Name, err))
+				}
+			}
+		}
 	}
 	return errors.Join(errs...)
 }
 
-// Run validates all modules before executing any of them, in registration
-// order; errors stop subsequent modules and completed operations are not rolled
-// back
+// Run validates the structure of all modules before executing any of them
+// in registration order. Errors stop subsequent modules and completed
+// operations are not rolled back
 func (config Config) Run(ctx context.Context, operation any) error {
-	if err := config.Validate(); err != nil {
+	if err := config.validate(false); err != nil {
 		return err
 	}
 	handled := false

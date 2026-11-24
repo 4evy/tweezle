@@ -44,7 +44,13 @@ func Addon(providers ...ProviderAddon) tweezle.Addon {
 type Module struct{ Config Config }
 
 func (module Module) Validate() error {
-	return errors.Join(module.Config.Validate(), ValidateExtensionSettingsFiles(module.Config.ExtensionSettings.Files))
+	return module.Config.Validate()
+}
+
+func (module Module) ValidateFiles() error {
+	return errors.Join(
+		ValidateExtensionSettingsFiles(module.Config.ExtensionSettings.Files),
+	)
 }
 
 // ProfileOptions applies the profile and extension storage together

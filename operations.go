@@ -29,7 +29,7 @@ type BrowserModule interface {
 
 // Browser selects one browser engine while allowing supporting modules
 func (config Config) Browser() (BrowserModule, error) {
-	if err := config.Validate(); err != nil {
+	if err := config.validate(false); err != nil {
 		return nil, err
 	}
 	var engine BrowserModule
@@ -92,7 +92,7 @@ func RenderPolicies(ctx context.Context, writer io.Writer, configs ...Config) er
 		return errors.New("managed policy writer is required")
 	}
 	for _, config := range configs {
-		if err := config.Validate(); err != nil {
+		if err := config.validate(false); err != nil {
 			return err
 		}
 	}

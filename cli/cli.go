@@ -296,9 +296,14 @@ func newConfigValidateCommand(app *cliApplication) *cobra.Command {
 				return err
 			}
 			for _, path := range paths {
-				if config, err := app.loadBrowserConfig(path); err != nil {
+				config, err := app.loadBrowserConfig(path)
+				if err != nil {
 					return err
-				} else if _, err := config.Browser(); err != nil {
+				}
+				if err := config.Validate(); err != nil {
+					return err
+				}
+				if _, err := config.Browser(); err != nil {
 					return err
 				}
 				if err := statusf(
