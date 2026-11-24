@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -12,7 +13,7 @@ import (
 	fileutil "github.com/4evy/tweezle/internal/file"
 )
 
-func (browser Browser) command(ctx context.Context, executable string, readOnly, writable []string) ([]string, error) {
+func (browser Browser) maintenanceCommand(ctx context.Context, executable string, readOnly, writable []string, stateDir string) ([]string, error) {
 	config := browser.Config.Linux.Flatpak
 	if runtime.GOOS != "linux" || config.AppID == "" {
 		return []string{executable}, nil
@@ -21,7 +22,17 @@ func (browser Browser) command(ctx context.Context, executable string, readOnly,
 	if err != nil {
 		return nil, err
 	}
-	return config.Command(app, readOnly, writable)
+	// Some packages inspect or clean XDG_CONFIG_HOME in their wrapper before
+	// Chromium sees --user-data-dir
+	configHome := filepath.Join(stateDir, ".tweezle-config")
+	if err := os.Mkdir(configHome, 0o700); err != nil {
+		return nil, err
+	}
+	command, err := config.Command(app, readOnly, append(slices.Clone(writable), configHome))
+	if err != nil {
+		return nil, err
+	}
+	return slices.Insert(command, len(command)-1, "--env=XDG_CONFIG_HOME="+configHome), nil
 }
 
 func (browser Browser) readIdentity(ctx context.Context, executable string) (browserIdentity, error) {
@@ -29,7 +40,7 @@ func (browser Browser) readIdentity(ctx context.Context, executable string) (bro
 		return foundation.ReadBrowserIdentity(ctx, executable)
 	}
 	return foundation.ReadBrowserIdentityCommand(ctx, func(profile string) ([]string, error) {
-		return browser.command(ctx, executable, nil, []string{profile})
+		return browser.maintenanceCommand(ctx, executable, nil, []string{profile}, profile)
 	})
 }
 

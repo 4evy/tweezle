@@ -24,7 +24,9 @@ func (stage *extensionStorageStage) Root() string { return stage.root }
 
 func (stage *extensionStorageStage) Remove() { stage.remove() }
 
-func (stage *extensionStorageStage) Commit(profile string) error { return stage.commit(profile) }
+func (stage *extensionStorageStage) Commit(profile string, checks ...func(string) error) error {
+	return stage.commit(profile, checks...)
+}
 
 func EvaluateExtensionCommand(ctx context.Context, prefix []string, directory, profile, pageURL, id, script string, input map[string]any) error {
 	return evaluateExtensionCommand(ctx, prefix, directory, profile, pageURL, id, script, input)

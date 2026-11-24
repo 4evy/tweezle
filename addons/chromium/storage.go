@@ -50,7 +50,11 @@ const (
 )
 
 func ApplyExtensionSettings(ctx context.Context, options ApplyOptions) error {
-	if err := EnsureProfileNotRunning(options.ProfileDir); err != nil {
+	return applyExtensionSettings(ctx, options, EnsureProfileNotRunning)
+}
+
+func applyExtensionSettings(ctx context.Context, options ApplyOptions, checkProfile func(string) error) error {
+	if err := checkProfile(options.ProfileDir); err != nil {
 		return err
 	}
 	return extensionstorage.Apply(ctx, extensionstorage.ApplyOptions{

@@ -180,6 +180,9 @@ func (browser Browser) ApplyProfileSettings(
 	if options.ProfileDir == "" {
 		return errors.New(profileDirectoryRequiredMessage)
 	}
+	if err := browser.ensureProfileNotRunning(options.ProfileDir); err != nil {
+		return err
+	}
 	err := browser.ApplyExtensionSettings(ctx, options)
 	if err != nil {
 		if isStorageTemporarilyUnavailable(err) {
@@ -232,7 +235,7 @@ func (browser Browser) ApplyExtensionSettings(
 		browser.ExtensionSettings,
 		options.Settings,
 	)
-	if err := ApplyExtensionSettings(ctx, options); err != nil {
+	if err := applyExtensionSettings(ctx, options, browser.ensureProfileNotRunning); err != nil {
 		return err
 	}
 	return browser.applyExtensionRuntime(ctx, options)

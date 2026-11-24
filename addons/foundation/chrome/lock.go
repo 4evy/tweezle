@@ -14,6 +14,16 @@ import (
 const chromiumSingletonLockFilename = "SingletonLock"
 
 func EnsureProfileNotRunning(profileDir string) error {
+	return ensureProfileNotRunning(profileDir, false)
+}
+
+// EnsureSandboxProfileNotRunning refuses even stale-looking singleton locks
+// because their PIDs may refer to a process inside a different namespace
+func EnsureSandboxProfileNotRunning(profileDir string) error {
+	return ensureProfileNotRunning(profileDir, true)
+}
+
+func ensureProfileNotRunning(profileDir string, sandboxed bool) error {
 	if profileDir == "" {
 		return nil
 	}
@@ -47,6 +57,9 @@ func EnsureProfileNotRunning(profileDir string) error {
 		}
 		if err != nil {
 			return fmt.Errorf("inspect browser process lock %s: %w", lockPath, err)
+		}
+		if sandboxed {
+			return fmt.Errorf("browser profile may be in use; cannot verify Flatpak singleton lock %s from outside its PID namespace", lockPath)
 		}
 		active, err := chromiumSingletonLockActive(target)
 		if err != nil {

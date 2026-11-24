@@ -164,7 +164,7 @@ func (browser Browser) applyExtensionRuntime(ctx context.Context, options ApplyO
 }
 
 func (browser Browser) runExtensionRuntime(ctx context.Context, executable, directory, id, profile string, config ExtensionRuntimeConfig, input ApplyInput) error {
-	if err := EnsureProfileNotRunning(profile); err != nil {
+	if err := browser.ensureProfileNotRunning(profile); err != nil {
 		return err
 	}
 	script, files, err := config.load()
@@ -206,19 +206,22 @@ func (browser Browser) runExtensionRuntime(ctx context.Context, executable, dire
 		return err
 	}
 	defer stage.Remove()
-	command, err := browser.command(ctx, executable, []string{directory}, []string{stage.Root()})
+	root := stage.Root()
+	command, err := browser.maintenanceCommand(ctx, executable, []string{directory}, []string{root}, root)
 	if err != nil {
 		return err
 	}
-	if err := foundation.EvaluateExtensionCommand(ctx, command, directory, stage.Root(), pageURL, id, script, map[string]any{
+	if err := foundation.EvaluateExtensionCommand(ctx, command, directory, root, pageURL, id, script, map[string]any{
 		"files":  files,
 		"values": input.ExtensionValues,
 		"id":     id,
 	}); err != nil {
 		return err
 	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return stage.Commit(profile)
+	return stage.Commit(profile, func(profile string) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return browser.ensureProfileNotRunning(profile)
+	})
 }
