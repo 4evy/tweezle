@@ -176,6 +176,11 @@ func (config OriginConfig) Settings() (OriginSettings, error) {
 				}
 				continue
 			}
+			if name == "hidden_settings" {
+				if text, ok := value.(string); ok && (text != strings.TrimSpace(text) || strings.ContainsAny(text, "\r\n\u2028\u2029")) {
+					return settings, fmt.Errorf("%s.%s cannot be represented as a single dashboard setting", name, key)
+				}
+			}
 			data, err := json.Marshal(value)
 			if err != nil {
 				return settings, fmt.Errorf("%s.%s: %w", name, key, err)
