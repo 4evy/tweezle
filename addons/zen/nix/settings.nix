@@ -47,18 +47,9 @@ in
             gradientColors = schema.optional (types.listOf (
               schema.freeformSubmodule { }
             )) "Native gradient color dot records.";
-            opacity = schema.optional (types.oneOf [
-              types.int
-              types.float
-            ]) "Theme opacity from zero to one.";
-            texture = schema.optional (types.oneOf [
-              types.int
-              types.float
-            ]) "Theme grain from zero to one.";
-            rotation = schema.optional (types.oneOf [
-              types.int
-              types.float
-            ]) "Gradient rotation.";
+            opacity = schema.optional types.number "Theme opacity from zero to one.";
+            texture = schema.optional types.number "Theme grain from zero to one.";
+            rotation = schema.optional types.number "Gradient rotation.";
           } "Workspace theme patch; omitted fields survive.";
         }
       ))

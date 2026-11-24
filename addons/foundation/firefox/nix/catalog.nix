@@ -28,10 +28,7 @@ let
         "decimal"
       ]
     then
-      types.oneOf [
-        types.int
-        types.float
-      ]
+      types.number
     else if type == "array" then
       types.listOf (fromSchema (definition.items or { }))
     else if type == "object" then
