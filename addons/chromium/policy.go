@@ -33,8 +33,9 @@ func MergeManagedPolicies(configs ...Config) (map[string]any, error) {
 		}
 		policies := map[string]any{}
 		aliases := map[string]string{}
+		browserConfig := config.Browser.normalized()
 		for _, provider := range config.Providers {
-			contribution, err := providerContribution(provider, config.Browser)
+			contribution, err := providerContribution(provider, browserConfig)
 			if err != nil {
 				return nil, err
 			}

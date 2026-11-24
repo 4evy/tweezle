@@ -10,5 +10,3 @@ import "github.com/4evy/tweezle/addons/chromium"
 func Addon() chromium.ProviderAddon {
 	return chromium.NewProviderAddon[Config]("helium")
 }
-
-func (Config) PolicyNamespace() string { return "chromium" }
