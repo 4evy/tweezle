@@ -20,8 +20,6 @@ const (
 	heliumRedShift                         = 16
 	heliumGreenShift                       = 8
 	heliumOpaqueAlphaMask            int64 = 0xff000000
-	heliumSignedColorLimit           int64 = 1 << 31
-	heliumARGBModulus                int64 = 1 << 32
 )
 
 // Config exposes preferences implemented by Helium rather than upstream
@@ -212,6 +210,10 @@ func (config Config) LaunchContributions(
 	}
 }
 
+// UserColorFromFlags interprets Omarchy's --set-user-color flag for Tweezle's
+// Helium theme adapter, returning the final RGB value as signed 32-bit ARGB
+// An invalid final flag takes precedence over earlier valid flags
+// Source: https://github.com/omacom/omarchy-chromium/blob/05530dfd42c28ce45e99976b1ea43dfc50e7644b/001-omarchy-theme-switcher.patch#L142-L155
 func UserColorFromFlags(flags []string) (int64, bool) {
 	for _, flag := range slices.Backward(flags) {
 		value, ok := strings.CutPrefix(flag, heliumSetUserColorFlagPrefix)
@@ -234,10 +236,7 @@ func UserColorFromFlags(flags []string) (int64, bool) {
 			rgb[0]<<heliumRedShift |
 			rgb[1]<<heliumGreenShift |
 			rgb[2]
-		if argb >= heliumSignedColorLimit {
-			argb -= heliumARGBModulus
-		}
-		return argb, true
+		return int64(int32(argb)), true
 	}
 	return 0, false
 }

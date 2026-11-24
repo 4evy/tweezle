@@ -19,8 +19,8 @@
 name = "Helium"
 executable_name = "helium-configured"
 flags = ["--no-first-run", "--no-default-browser-check"]
-# To set a theme color, add "--set-user-color=166,227,161" to flags above
-# Helium's addon also applies the matching profile theme values
+# For Omarchy --set-user-color compatibility, add "--set-user-color=166,227,161"
+# to flags above. Tweezle applies the profile theme values, not upstream Helium
 
 [browser.linux]
 app_dir = "/path/to/helium"
