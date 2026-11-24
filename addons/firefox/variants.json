@@ -1,0 +1,65 @@
+[
+  {
+    "id": "firefox",
+    "name": "Firefox",
+    "linux_launcher": "firefox",
+    "mac_app": "Firefox",
+    "mac_launcher": "firefox"
+  },
+  {
+    "id": "beta",
+    "name": "Firefox Beta",
+    "linux_launcher": "firefox",
+    "mac_app": "Firefox",
+    "mac_launcher": "firefox"
+  },
+  {
+    "id": "esr",
+    "name": "Firefox ESR",
+    "linux_launcher": "firefox",
+    "mac_app": "Firefox",
+    "mac_launcher": "firefox"
+  },
+  {
+    "id": "developer",
+    "name": "Firefox Developer Edition",
+    "linux_launcher": "firefox-devedition",
+    "mac_app": "Firefox Developer Edition",
+    "mac_launcher": "firefox"
+  },
+  {
+    "id": "nightly",
+    "name": "Firefox Nightly",
+    "linux_launcher": "firefox-nightly",
+    "mac_app": "Firefox Nightly",
+    "mac_launcher": "firefox"
+  },
+  {
+    "id": "librewolf",
+    "name": "LibreWolf",
+    "linux_launcher": "librewolf",
+    "mac_app": "LibreWolf",
+    "mac_launcher": "librewolf"
+  },
+  {
+    "id": "waterfox",
+    "name": "Waterfox",
+    "linux_launcher": "waterfox",
+    "mac_app": "Waterfox",
+    "mac_launcher": "waterfox"
+  },
+  {
+    "id": "floorp",
+    "name": "Floorp",
+    "linux_launcher": "floorp",
+    "mac_app": "Floorp",
+    "mac_launcher": "floorp"
+  },
+  {
+    "id": "zen",
+    "name": "Zen",
+    "linux_launcher": "zen",
+    "mac_app": "Zen",
+    "mac_launcher": "zen"
+  }
+]

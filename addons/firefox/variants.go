@@ -1,22 +1,44 @@
 package firefox
 
-import "strings"
+import (
+	"bytes"
+	_ "embed"
+	"fmt"
+	"slices"
 
-type variant struct{ name, linuxLauncher, macApp, macLauncher string }
+	jsonutil "github.com/4evy/tweezle/internal/json"
+)
+
+type variant struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	LinuxLauncher string `json:"linux_launcher"`
+	MacApp        string `json:"mac_app"`
+	MacLauncher   string `json:"mac_launcher"`
+}
+
+// variants.json defines bundled identities in the public Variants order
+//
+//go:embed variants.json
+var embeddedVariants []byte
 
 // Presets provide executable identities only. Profile paths remain explicit
 // because Firefox uses random profile names and forks can change their roots
 // Unknown variants use the same engine with explicitly configured app paths
-var variants = map[string]variant{
-	"firefox":   {"Firefox", "firefox", "Firefox", "firefox"},
-	"beta":      {"Firefox Beta", "firefox", "Firefox", "firefox"},
-	"esr":       {"Firefox ESR", "firefox", "Firefox", "firefox"},
-	"developer": {"Firefox Developer Edition", "firefox-devedition", "Firefox Developer Edition", "firefox"},
-	"nightly":   {"Firefox Nightly", "firefox-nightly", "Firefox Nightly", "firefox"},
-	"librewolf": {"LibreWolf", "librewolf", "LibreWolf", "librewolf"},
-	"waterfox":  {"Waterfox", "waterfox", "Waterfox", "waterfox"},
-	"floorp":    {"Floorp", "floorp", "Floorp", "floorp"},
-	"zen":       {"Zen", "zen", "Zen", "zen"},
+var variants, variantNames = loadVariants()
+
+func loadVariants() (map[string]variant, []string) {
+	catalog, err := jsonutil.Strict.Decode[[]variant](bytes.NewReader(embeddedVariants))
+	if err != nil {
+		panic(fmt.Errorf("decode Firefox variants: %w", err))
+	}
+	presets := make(map[string]variant, len(catalog))
+	names := make([]string, len(catalog))
+	for index, preset := range catalog {
+		presets[preset.ID] = preset
+		names[index] = preset.ID
+	}
+	return presets, names
 }
 
 func (config Config) defaults() Config {
@@ -28,7 +50,7 @@ func (config Config) defaults() Config {
 	}
 	preset, known := variants[config.Variant]
 	if config.Name == "" {
-		config.Name = preset.name
+		config.Name = preset.Name
 		if !known {
 			config.Name = config.Variant
 		}
@@ -37,13 +59,13 @@ func (config Config) defaults() Config {
 		config.ExecutableName = config.Variant + "-configured"
 	}
 	if config.Linux.LauncherName == "" {
-		config.Linux.LauncherName = preset.linuxLauncher
+		config.Linux.LauncherName = preset.LinuxLauncher
 	}
 	if config.MacOS.AppDir == "" && known {
-		config.MacOS.AppDir = "/Applications/" + preset.macApp + ".app"
+		config.MacOS.AppDir = "/Applications/" + preset.MacApp + ".app"
 	}
 	if config.MacOS.LauncherPath == "" && known {
-		config.MacOS.LauncherPath = "Contents/MacOS/" + preset.macLauncher
+		config.MacOS.LauncherPath = "Contents/MacOS/" + preset.MacLauncher
 	}
 	return config
 }
@@ -51,5 +73,5 @@ func (config Config) defaults() Config {
 // Variants lists the bundled identity presets. Explicit paths also support
 // unlisted Gecko forks without requiring a new provider or engine
 func Variants() []string {
-	return strings.Fields("firefox beta esr developer nightly librewolf waterfox floorp zen")
+	return slices.Clone(variantNames)
 }
