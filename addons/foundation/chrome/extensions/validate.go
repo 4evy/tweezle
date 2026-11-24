@@ -572,10 +572,9 @@ func ValidGitURL(rawURL string) bool {
 }
 
 func ValidGitRef(ref string) bool {
-	if ref == "" || strings.HasPrefix(ref, "-") || strings.HasPrefix(ref, "/") ||
-		strings.HasSuffix(ref, "/") || strings.HasSuffix(ref, ".") ||
-		strings.Contains(ref, "..") || strings.Contains(ref, "@{") ||
-		strings.Contains(ref, "//") || strings.ContainsAny(ref, " ~^:?*[\\\x7f") {
+	if ref == "" || ref == "@" || strings.HasPrefix(ref, "-") ||
+		strings.HasSuffix(ref, ".") || strings.Contains(ref, "..") ||
+		strings.Contains(ref, "@{") || strings.ContainsAny(ref, " ~^:?*[\\\x7f") {
 		return false
 	}
 	for _, character := range ref {

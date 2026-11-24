@@ -1,19 +1,24 @@
 package extensions
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
 	defaultGitExecutable = "git"
 	gitTemporaryPrefix   = "tweezle-extension-git-"
+	maxGitCommandOutput  = 64 << 10
+	maxGitCheckoutTime   = 5 * time.Minute
 )
 
 type GitClient struct {
@@ -61,6 +66,11 @@ func (client GitClient) Checkout(
 	destination string,
 	extension GitExtension,
 ) (_ GitRevision, err error) {
+	if err := validateGitExtension(extension); err != nil {
+		return GitRevision{}, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, maxGitCheckoutTime)
+	defer cancel()
 	cloneURL, err := GitCloneURL(extension)
 	if err != nil {
 		return GitRevision{}, err
@@ -81,10 +91,40 @@ func (client GitClient) Checkout(
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(workDir)) }()
 
+	fetchTarget := extension.Ref
+	pinned := extension.updatePolicy() == UpdatePolicyPinned
+	if pinned && fetchTarget == "" {
+		fetchTarget = strings.ToLower(extension.Commit)
+	}
+	if fetchTarget == "" {
+		fetchTarget = "HEAD"
+	}
+	objectID := extension.Commit
+	if !pinned && ValidGitCommit(fetchTarget) {
+		objectID = strings.ToLower(fetchTarget)
+		fetchTarget = objectID
+	}
+	if objectID == "" {
+		output, err := client.output(ctx, "identify remote object format", workDir, cloneURL,
+			"ls-remote", "--exit-code", "--", cloneURL, fetchTarget,
+		)
+		if err != nil {
+			return GitRevision{}, err
+		}
+		objectID, _, _ = strings.Cut(output, "\t")
+		if !ValidGitCommit(objectID) {
+			return GitRevision{}, errors.New("git returned no valid remote object ID")
+		}
+	}
+	objectFormat := "sha1"
+	if len(objectID) == 64 {
+		objectFormat = "sha256"
+	}
+
 	repositoryDir := filepath.Join(workDir, "repository")
 	archivePath := filepath.Join(workDir, "extension.zip")
 	if err := client.run(ctx, "initialize repository", "", cloneURL,
-		"init", "--quiet", repositoryDir,
+		"init", "--quiet", "--object-format="+objectFormat, repositoryDir,
 	); err != nil {
 		return GitRevision{}, err
 	}
@@ -93,17 +133,11 @@ func (client GitClient) Checkout(
 	); err != nil {
 		return GitRevision{}, err
 	}
-	fetchTarget := extension.Ref
-	if extension.updatePolicy() == UpdatePolicyPinned && fetchTarget == "" {
-		fetchTarget = extension.Commit
-	}
-	if fetchTarget == "" {
-		fetchTarget = "HEAD"
-	}
 	if err := client.run(ctx, "fetch repository revision", "", cloneURL,
 		"-c", "core.hooksPath=/dev/null",
+		"-c", "fetch.unpackLimit=1",
 		"-C", repositoryDir,
-		"fetch", "--quiet", "--depth=1", "origin", fetchTarget,
+		"fetch", "--quiet", "--depth=1", "--no-tags", "--no-recurse-submodules", "--", "origin", fetchTarget,
 	); err != nil {
 		return GitRevision{}, err
 	}
@@ -117,8 +151,7 @@ func (client GitClient) Checkout(
 	if !ValidGitCommit(commit) {
 		return GitRevision{}, fmt.Errorf("git returned invalid commit %q", commit)
 	}
-	if extension.updatePolicy() == UpdatePolicyPinned &&
-		!strings.EqualFold(commit, extension.Commit) {
+	if pinned && !strings.EqualFold(commit, extension.Commit) {
 		return GitRevision{}, fmt.Errorf(
 			"git ref %q resolved to commit %s, want pinned commit %s",
 			extension.Ref,
@@ -130,9 +163,16 @@ func (client GitClient) Checkout(
 	if extension.Subdirectory != "" {
 		treeish += ":" + extension.Subdirectory
 	}
-	if err := client.run(ctx, "export repository revision", repositoryDir, cloneURL,
-		"archive", "--format=zip", "--output", archivePath, treeish,
-	); err != nil {
+	archive, err := os.Create(archivePath)
+	if err != nil {
+		return GitRevision{}, err
+	}
+	// Store files without compression so the write budget also bounds the
+	// expanded export Git can produce before our ZIP validation runs
+	exportErr := client.runTo(ctx, "export repository revision", repositoryDir, cloneURL, archive, maxArtifactBytes,
+		"-c", "core.bigFileThreshold=1m", "archive", "--format=zip", "-0", treeish,
+	)
+	if err := errors.Join(exportErr, archive.Close()); err != nil {
 		return GitRevision{}, err
 	}
 	if err := ExtractZipFile(archivePath, destination); err != nil {
@@ -148,8 +188,7 @@ func (client GitClient) run(
 	cloneURL string,
 	arguments ...string,
 ) error {
-	_, err := client.output(ctx, operation, directory, cloneURL, arguments...)
-	return err
+	return client.runTo(ctx, operation, directory, cloneURL, io.Discard, 0, arguments...)
 }
 
 func (client GitClient) output(
@@ -159,6 +198,18 @@ func (client GitClient) output(
 	cloneURL string,
 	arguments ...string,
 ) (string, error) {
+	var output bytes.Buffer
+	err := client.runTo(ctx, operation, directory, cloneURL, &output, maxGitCommandOutput, arguments...)
+	return output.String(), err
+}
+
+func (client GitClient) runTo(
+	ctx context.Context,
+	operation, directory, cloneURL string,
+	writer io.Writer,
+	limit int64,
+	arguments ...string,
+) error {
 	executable := client.Executable
 	if executable == "" {
 		executable = defaultGitExecutable
@@ -166,19 +217,50 @@ func (client GitClient) output(
 	command := exec.CommandContext(ctx, executable, arguments...)
 	command.Dir = directory
 	command.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	output, err := command.CombinedOutput()
+	command.WaitDelay = time.Second
+	output := gitOutputBudget{writer: writer, remaining: limit}
+	command.Stdout = writer
+	if limit > 0 {
+		command.Stdout = &output
+	}
+	var stderr bytes.Buffer
+	diagnostic := gitOutputBudget{writer: &stderr, remaining: maxGitCommandOutput}
+	command.Stderr = &diagnostic
+	err := command.Run()
+	if output.exceeded {
+		return fmt.Errorf("%s: git output exceeds %d bytes", operation, limit)
+	}
+	if diagnostic.exceeded {
+		return fmt.Errorf("%s: git diagnostics exceed %d bytes", operation, maxGitCommandOutput)
+	}
 	if err == nil {
-		return string(output), nil
+		return nil
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return "", fmt.Errorf("%s: %w", operation, ctxErr)
+		return fmt.Errorf("%s: %w", operation, ctxErr)
 	}
-	detail := strings.TrimSpace(string(output))
+	detail := strings.TrimSpace(stderr.String())
 	if detail != "" {
 		detail = strings.ReplaceAll(detail, cloneURL, safeGitURL(cloneURL))
-		return "", fmt.Errorf("%s: %w: %s", operation, err, detail)
+		return fmt.Errorf("%s: %w: %s", operation, err, detail)
 	}
-	return "", fmt.Errorf("%s: %w", operation, err)
+	return fmt.Errorf("%s: %w", operation, err)
+}
+
+type gitOutputBudget struct {
+	writer    io.Writer
+	remaining int64
+	exceeded  bool
+}
+
+func (output *gitOutputBudget) Write(data []byte) (int, error) {
+	if int64(len(data)) > output.remaining {
+		output.exceeded = true
+		return 0, errors.New("git output exceeds its byte budget")
+	}
+	written, err := output.writer.Write(data)
+	output.remaining -= int64(written)
+	return written, err
 }
 
 func safeGitURL(rawURL string) string {
