@@ -34,13 +34,13 @@ func ReadPreferences(directory string) (map[string]any, error) {
 	return result, nil
 }
 
-// Use the standard lexer for identifiers and C-style comments, with Mozilla's
-// string and hash-comment rules. Semicolons delimit calls across line breaks
+// Use the standard lexer for identifiers, with Mozilla's string and comment
+// rules. Semicolons delimit calls across line breaks
 // https://github.com/mozilla-firefox/firefox/blob/main/modules/libpref/parser/src/lib.rs
 func readPreferenceCalls(data []byte, name string, result map[string]any) error {
 	var lexer scanner.Scanner
 	lexer.Init(bytes.NewReader(data))
-	lexer.Mode = scanner.ScanIdents | scanner.ScanComments | scanner.SkipComments
+	lexer.Mode = scanner.ScanIdents
 	lexer.Whitespace |= 1<<'\v' | 1<<'\f'
 	// Scan decimal digits as one token without Go's octal/hexadecimal rules
 	lexer.IsIdentRune = func(character rune, _ int) bool {
@@ -67,15 +67,32 @@ func readPreferenceCalls(data []byte, name string, result map[string]any) error 
 		}
 		return nil
 	}
+scan:
 	for token := lexer.Scan(); token != scanner.EOF; token = lexer.Scan() {
 		if token == 0 {
 			break
 		}
-		if token == '#' {
+		if token == '#' || token == '/' && lexer.Peek() == '/' {
 			for lexer.Peek() != scanner.EOF && lexer.Peek() != '\n' && lexer.Peek() != '\r' && lexer.Peek() != 0 {
 				lexer.Next()
 			}
 			continue
+		}
+		if token == '/' && lexer.Peek() == '*' {
+			commentLine := lexer.Line
+			lexer.Next()
+			for {
+				switch lexer.Next() {
+				case scanner.EOF, 0:
+					scanErr = fmt.Errorf("%s line %d: unterminated comment", name, commentLine)
+					break scan
+				case '*':
+					if lexer.Peek() == '/' {
+						lexer.Next()
+						continue scan
+					}
+				}
+			}
 		}
 		if len(line) == 0 {
 			lineNumber = lexer.Line
