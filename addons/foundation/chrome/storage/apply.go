@@ -206,40 +206,44 @@ func applyStorageMutation(
 	if applyDirectStorageMutation(state, mutation) {
 		return nil
 	}
-	document, err := decodeMutationDocument(state, mutation)
-	if err != nil {
-		return fmt.Errorf(
-			"apply %s to %s/%s/%s from %s: decode: %w",
-			mutation.Operation,
-			area,
-			extensionID,
-			mutation.Key,
-			mutation.Source,
-			err,
-		)
-	}
-	document, changed, err := mutateStorageValue(
-		document,
-		mutation.Path,
-		mutation.Operation,
-		mutation.Value,
-	)
-	if err != nil {
-		return fmt.Errorf(
-			"apply %s to %s/%s/%s path %q from %s: %w",
-			mutation.Operation,
-			area,
-			extensionID,
-			mutation.Key,
+	document := mutation.Value
+	if mutation.Operation != OperationSet || mutation.Path != "" {
+		current, err := decodeMutationDocument(state, mutation)
+		if err != nil {
+			return fmt.Errorf(
+				"apply %s to %s/%s/%s from %s: decode: %w",
+				mutation.Operation,
+				area,
+				extensionID,
+				mutation.Key,
+				mutation.Source,
+				err,
+			)
+		}
+		var changed bool
+		document, changed, err = mutateStorageValue(
+			current,
 			mutation.Path,
-			mutation.Source,
-			err,
+			mutation.Operation,
+			mutation.Value,
 		)
+		if err != nil {
+			return fmt.Errorf(
+				"apply %s to %s/%s/%s path %q from %s: %w",
+				mutation.Operation,
+				area,
+				extensionID,
+				mutation.Key,
+				mutation.Path,
+				mutation.Source,
+				err,
+			)
+		}
+		if !changed {
+			return nil
+		}
 	}
-	if !changed {
-		return nil
-	}
-	state[mutation.Key], err = encodeStorageValue(document, mutation.Encoding)
+	encoded, err := encodeStorageValue(document, mutation.Encoding)
 	if err != nil {
 		return fmt.Errorf(
 			"apply %s to %s/%s/%s from %s: encode: %w",
@@ -251,6 +255,7 @@ func applyStorageMutation(
 			err,
 		)
 	}
+	state[mutation.Key] = encoded
 	return nil
 }
 
