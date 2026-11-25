@@ -326,12 +326,10 @@ func applySiteCookies(ctx context.Context, config sites.Site) error {
 			sameSite = network.CookieSameSiteNone
 		}
 		params := siteCookieParams{
-			SetCookieParams: network.SetCookieParams{
-				Name: cookie.Name, Value: cookie.Value, Domain: domain,
-				Path: path, Secure: &secure, HTTPOnly: &cookie.HTTPOnly,
-				SameSite: sameSite,
-			},
-			Expires: cdp.TimeSinceEpoch(*cookie.Expires),
+			Name: cookie.Name, Value: cookie.Value, Domain: domain,
+			Path: path, Secure: &secure, HTTPOnly: &cookie.HTTPOnly,
+			SameSite: sameSite,
+			Expires:  cdp.TimeSinceEpoch(*cookie.Expires),
 		}
 		// Domain alone preserves explicit secure=false on HTTPS origins
 		// MakeCookieFromProtocolValues otherwise forces secure for HTTPS URLs
@@ -365,8 +363,7 @@ func siteCookieDomain(host, configured string) string {
 
 func siteCookieDomainMatches(host, domain string) bool {
 	domain = strings.TrimPrefix(strings.TrimSuffix(domain, "]"), "[")
-	if strings.HasPrefix(domain, ".") {
-		domain = strings.TrimPrefix(domain, ".")
+	if domain, ok := strings.CutPrefix(domain, "."); ok {
 		return host == domain || strings.HasSuffix(host, "."+domain)
 	}
 	return host == domain

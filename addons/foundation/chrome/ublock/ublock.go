@@ -293,8 +293,8 @@ func (config Config) AddExtensions(catalog extensions.Catalog) extensions.Catalo
 			catalog.ChromeStoreUpdateURL = StoreUpdateURL
 		}
 		catalog.UpdateURL = append(catalog.UpdateURL, extensions.UpdateURLExtension{
-			ExtensionIdentity: extensions.ExtensionIdentity{ID: LiteID, Name: "uBlock Origin Lite"},
-			UpdateURL:         catalog.ChromeStoreUpdateURL,
+			ID: LiteID, Name: "uBlock Origin Lite",
+			UpdateURL: catalog.ChromeStoreUpdateURL,
 		})
 	}
 	return catalog

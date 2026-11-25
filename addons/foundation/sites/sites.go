@@ -314,7 +314,7 @@ func canonicalHost(host string) (netip.Addr, bool) {
 	// Browsers interpret DNS-shaped hosts ending in a number as IPv4,
 	// including legacy shorthand, octal, and hexadecimal addresses
 	label := host[strings.LastIndexByte(host, '.')+1:]
-	if digits := strings.TrimPrefix(label, "0x"); digits != label {
+	if digits, ok := strings.CutPrefix(label, "0x"); ok {
 		return netip.Addr{}, strings.Trim(digits, "0123456789abcdef") != ""
 	}
 	return netip.Addr{}, strings.Trim(label, "0123456789") != ""
