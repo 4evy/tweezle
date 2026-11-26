@@ -96,7 +96,7 @@ func TestApplyProfileSettingsDoesNotPatchBrowserDataWhenExtensionStorageLocked(t
 			`{"browser":{"existing":"local-state"}}`,
 		),
 		filepath.Join(root, VariationsFilename): []byte(
-			`{"existing":"variations"}`,
+			`{"variations_crash_streak":2}`,
 		),
 	}
 	for path, data := range browserData {
@@ -125,7 +125,7 @@ func TestApplyProfileSettingsDoesNotPatchBrowserDataWhenExtensionStorageLocked(t
 		Preferences: PreferenceDefaultsConfig{
 			Values:           []PreferenceValueConfig{{Path: "browser.lock_test", Value: true}},
 			LocalStateValues: []PreferenceValueConfig{{Path: "browser.lock_test", Value: true}},
-			VariationValues:  []PreferenceValueConfig{{Path: "lock_test", Value: true}},
+			VariationValues:  []PreferenceValueConfig{{Path: "variations_crash_streak", Value: 0}},
 		},
 	}})
 	if err != nil {

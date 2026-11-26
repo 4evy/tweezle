@@ -8,7 +8,15 @@ import (
 )
 
 func TestPrepareRejectsUnsupportedNativeShortcutStore(t *testing.T) {
-	config := Config{Keyboard: map[string]any{"enabled": false}}
+	config := Config{Keyboard: map[string]any{"shortcuts": map[string]any{
+		"open": map[string]any{
+			"key":    "t",
+			"action": "open",
+			"modifiers": map[string]any{
+				"alt": false, "ctrl": true, "meta": false, "shift": false,
+			},
+		},
+	}}}
 	for _, current := range []string{
 		`{"schemaVersion":3,"shortcuts":{}}`,
 		`{"schemaVersion":2,"shortcuts":{"close":{"key":1,"action":"close","modifiers":{"alt":false,"ctrl":false,"meta":false,"shift":false}}}}`,
@@ -41,7 +49,12 @@ func TestNativeWorkspaceReferences(t *testing.T) {
 }
 
 func TestPreparePreservesFutureNativeShortcutFields(t *testing.T) {
-	config := Config{Keyboard: map[string]any{"enabled": false}}
+	config := Config{Keyboard: map[string]any{
+		"enabled": false,
+		"shortcuts": map[string]any{
+			"close": map[string]any{"key": "q"},
+		},
+	}}
 	profile := firefox.Profile{Preferences: map[string]any{
 		"floorp.keyboardshortcut.config": `{"schemaVersion":2,"future":true,"shortcuts":{"close":{"key":"w","action":"close","future":true,"modifiers":{"alt":false,"ctrl":true,"meta":false,"shift":false,"future":true}}}}`,
 	}}
@@ -49,7 +62,10 @@ func TestPreparePreservesFutureNativeShortcutFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"enabled":false,"future":true,"schemaVersion":2,"shortcuts":{"close":{"action":"close","future":true,"key":"w","modifiers":{"alt":false,"ctrl":true,"future":true,"meta":false,"shift":false}}}}`
+	if got := contribution.Preferences["floorp.keyboardshortcut.enabled"]; got != false {
+		t.Fatalf("shortcut enablement = %v, want false", got)
+	}
+	want := `{"future":true,"schemaVersion":2,"shortcuts":{"close":{"action":"close","future":true,"key":"q","modifiers":{"alt":false,"ctrl":true,"future":true,"meta":false,"shift":false}}}}`
 	if got := contribution.Preferences["floorp.keyboardshortcut.config"]; got != want {
 		t.Fatalf("unexpected native merge: %v", got)
 	}
