@@ -95,22 +95,25 @@ func TestLiteRulesetsFromManifestAndCRX(t *testing.T) {
 				t.Fatal(err)
 			}
 			var values struct {
-				Version    string   `json:"version"`
 				Rulesets   []string `json:"enabledRulesets"`
-				AutoReload bool     `json:"autoReload"`
+				AutoReload *bool    `json:"autoReload"`
 			}
-			if len(document.Operations) != 1 || len(document.Local) != 1 {
-				t.Fatalf("missing Lite initialization records: %s", source.Data)
+			if len(document.Operations) != 1 || len(document.Local) != 0 {
+				t.Fatalf("expected only an editable ruleset patch: %s", source.Data)
 			}
-			if err := json.Unmarshal(document.Operations[0].Value, &values); err != nil {
+			op := document.Operations[0]
+			if op.ID != config.InstalledID() || op.Area != storage.AreaLocal || op.Key != "rulesetConfig" || op.Operation != storage.OperationMerge {
+				t.Fatalf("expected a merge into Lite's rulesetConfig: %s", source.Data)
+			}
+			if err := json.Unmarshal(op.Value, &values, json.RejectUnknownMembers(true)); err != nil {
 				t.Fatal(err)
 			}
 			want := []string{}
 			if len(rulesets) > 0 {
 				want = []string{"base", "extra"}
 			}
-			if values.Version != "2026.10.9" || !reflect.DeepEqual(values.Rulesets, want) || values.AutoReload {
-				t.Fatalf("incorrect ruleset initialization: %s", source.Data)
+			if !reflect.DeepEqual(values.Rulesets, want) || values.AutoReload == nil || *values.AutoReload {
+				t.Fatalf("incorrect ruleset patch: %s", source.Data)
 			}
 		}
 	}
