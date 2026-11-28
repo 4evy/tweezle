@@ -8,7 +8,7 @@ require (
 	github.com/Jeffail/gabs/v2 v2.7.0
 	github.com/adrg/xdg v0.5.3
 	github.com/buildkite/shellwords v1.0.1
-	github.com/chromedp/cdproto v0.160.9
+	github.com/chromedp/cdproto v0.160.12
 	github.com/chromedp/chromedp v0.24.0
 	github.com/daku10/go-lz-string v0.0.7
 	github.com/google/go-cmp v0.7.0
