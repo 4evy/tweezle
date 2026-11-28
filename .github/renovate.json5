@@ -1,47 +1,46 @@
 {
-  // Renovate discovers repository configuration from .github automatically.
-  $schema: "https://docs.renovatebot.com/renovate-schema.json",
-  // Dependency upgrades are bumps, not claims that a bug was fixed
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [
-    "config:best-practices",
-    ":semanticCommits",
-    ":semanticCommitTypeAll(bump)",
+    'config:best-practices',
+    ':semanticCommits',
+    ':semanticCommitTypeAll(bump)',
   ],
-
-  // GITHUB_TOKEN pushes do not start a second workflow. Use Renovate's
-  // artifact status to require successful updates before branch automerge.
   automerge: true,
-  automergeType: "branch",
+  automergeType: 'branch',
   internalChecksAsSuccess: true,
   statusCheckWhen: {
-    artifactError: "always",
+    artifactError: 'always',
   },
-
-  // A failed branch automerge remains a branch pending explicit approval.
-  // The workflow token has no pull-request write permission, so Renovate
-  // cannot turn it into a PR.
-  prCreation: "approval",
-  dependencyDashboard: false,
-
+  prCreation: 'approval',
+  dependencyDashboard: {
+    enabled: false,
+  },
   packageRules: [
     {
-      matchManagers: ["gomod"],
-      postUpdateOptions: ["gomodUpdateImportPaths", "gomodTidy"],
+      matchManagers: [
+        'gomod',
+      ],
+      postUpdateOptions: [
+        'gomodUpdateImportPaths',
+        'gomodTidy',
+      ],
     },
     {
-      // Nixpkgs updates can also change the Go toolchain and vendor output.
-      matchManagers: ["gomod", "nix"],
+      matchManagers: [
+        'gomod',
+        'nix',
+      ],
       postUpgradeTasks: {
         commands: [
           "nix --extra-experimental-features 'nix-command flakes' run --inputs-from . nixpkgs#nix-update -- --flake --version=skip --build tweezle",
         ],
-        fileFilters: ["nix/package.nix"],
-        executionMode: "branch",
+        fileFilters: [
+          'nix/package.nix',
+        ],
+        executionMode: 'branch',
       },
     },
   ],
-
-  // The Nix manager is opt-in while it is in beta.
   nix: {
     enabled: true,
   },
